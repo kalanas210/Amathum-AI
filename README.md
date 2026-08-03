@@ -1,7 +1,7 @@
-# Ryzera — AI Voice Agents for Sri Lankan Businesses
+# Ryzera - AI Voice Agents for Sri Lankan Businesses
 
 > A production telephony platform where an AI agent **answers and makes real phone
-> calls** in Sinhala, Tamil and English — books appointments, takes orders, looks up
+> calls** in Sinhala, Tamil and English - books appointments, takes orders, looks up
 > live data, escalates to a human when it should — plus a visual **automation
 > builder** that turns every completed call into a workflow.
 
@@ -30,8 +30,8 @@ wired into real business data.
 
 ## 1. Purpose & problem
 
-Small and mid-size Sri Lankan businesses — clinics, restaurants, retailers, real-estate
-agents — lose revenue on the phone, not on the web:
+Small and mid-size Sri Lankan businesses - clinics, restaurants, retailers, real-estate
+agents - lose revenue on the phone, not on the web:
 
 | Problem | What it costs |
 |---|---|
