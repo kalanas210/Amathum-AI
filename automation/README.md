@@ -1,6 +1,6 @@
-# Naxter Automations — `automation/`
+# Ryzera Automations — `automation/`
 
-An **n8n-style workflow builder** ("if-this-then-then") for the Naxter/Ryzera admin.
+An **n8n-style workflow builder** ("if-this-then-then") for the Ryzera / Amathum AI admin.
 This folder is the **Sprint-1 backend foundation** from `automations-sprint-build-guide.md`,
 built as a **self-contained, independent project** so it can be tested on its own.
 
