@@ -356,14 +356,21 @@ _DUMMY_HASH = generate_password_hash('not-a-real-password', 'pbkdf2:sha256', sal
 
 
 WEBPHONE_FILE = BASE / 'instance' / 'webphone.json'
-_WEBPHONE_LEGACY = {'extension': '1010', 'password': 'WebRtc1010!', 'realm': '192.168.1.132'}
+# Seed values for a fresh install only. Never hardcode a real SIP password here —
+# on an existing box instance/webphone.json already holds the live credentials
+# (git-ignored), and this seed is not consulted.
+_WEBPHONE_LEGACY = {
+    'extension': os.environ.get('WEBPHONE_EXTENSION', ''),
+    'password': os.environ.get('WEBPHONE_PASSWORD', ''),
+    'realm': os.environ.get('WEBPHONE_REALM', ''),
+}
 
 
 def _webphone_cfg():
     """Softphone credentials from instance/webphone.json.
 
-    Seeded once from the value that used to be hardcoded in this file, so the
-    webphone keeps working across this change; rotate it afterwards."""
+    Falls back to the WEBPHONE_* environment variables on a fresh install; set
+    them (or edit instance/webphone.json) before using the browser softphone."""
     try:
         return json.loads(WEBPHONE_FILE.read_text())
     except Exception:
@@ -994,7 +1001,10 @@ def recordings_page():
 @app.route('/endpoints')
 @login_required
 def endpoints():
-    return render_template('endpoints.html', nav='endpoints')
+    # Credentials are never hardcoded here. Set SIP_PASSWORD_PATTERN (e.g.
+    # "SipPass{ext}!") to show per-extension passwords on this page.
+    return render_template('endpoints.html', nav='endpoints',
+                           sip_password_pattern=os.environ.get('SIP_PASSWORD_PATTERN', ''))
 
 @app.route('/trunk')
 @login_required

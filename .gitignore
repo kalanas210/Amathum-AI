@@ -60,6 +60,10 @@ yarn-error.log*
 .pnpm-debug.log*
 coverage/
 
+# ---- local editor config (not part of the project) ----
+.vscode/
+.idea/
+
 # ---- os / editor ----
 .DS_Store
 Thumbs.db
