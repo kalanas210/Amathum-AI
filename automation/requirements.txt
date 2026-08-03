@@ -1,0 +1,3 @@
+# The engine (automations.py: run_workflow + executors) is pure standard library.
+# Flask is only needed for the HTTP API / the standalone dev server.
+Flask>=3.0

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run VoIP connectivity probe every 10 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=voip-probe.service
+
+[Install]
+WantedBy=timers.target

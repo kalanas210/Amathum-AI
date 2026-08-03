@@ -1,0 +1,71 @@
+{
+  "id": "real-estate",
+  "name": "Real Estate Booking Agent",
+  "description": "Books property viewings, captures buyer/renter intent, escalates pricing/legal questions to specialists.",
+  "is_preset": true,
+  "voice": "Despina",
+  "model": "gemini-3.1-flash-live-preview",
+  "language_hint": "en-LK",
+  "greeting_trigger": "The customer has just connected to the call. Greet them warmly and ask how you can help with their property search today.",
+  "retry_greeting_trigger": "The customer was brought back because the booking agent was unavailable. Apologise and offer to take their details so we can call them back.",
+  "test_mode": true,
+  "test_mode_number": "0779190005",
+  "escalation_timeout_sec": 60,
+  "transfer_rules": [
+    {"category": "viewing",  "manager_number": "0779190001", "description": "Booking a physical property viewing — connect to a viewing coordinator."},
+    {"category": "pricing",  "manager_number": "0779190002", "description": "Pricing / negotiation / offer questions — connect to a senior sales agent."},
+    {"category": "legal",    "manager_number": "0779190003", "description": "Title / contracts / legal — connect to the legal team."},
+    {"category": "default",  "manager_number": "0779190005", "description": "Anything that doesn't match the above — connect to the duty manager."}
+  ],
+  "tools_enabled": ["save_customer_info", "request_human_transfer", "end_call"],
+  "tools_config": {
+    "save_customer_info": {"fields": ["name","phone","email","budget","preferred_area","property_type","bedrooms","viewing_date","complaint"]}
+  },
+  "working_hours": {
+    "enabled": false, "timezone": "Asia/Colombo",
+    "schedule": {"0":"","1":"09:00-18:00","2":"09:00-18:00","3":"09:00-18:00","4":"09:00-18:00","5":"09:00-18:00","6":"09:00-13:00"},
+    "out_of_hours_action": "greet",
+    "out_of_hours_greeting": "Thanks for calling — our office is currently closed but I can take your details and someone will call you back first thing tomorrow.",
+    "out_of_hours_transfer_category": "default",
+    "out_of_hours_hangup_message": ""
+  },
+  "record_calls": false,
+  "system_prompt": "You are Maya, a warm and knowledgeable Real Estate Booking Assistant for a property agency in Sri Lanka. You speak natural English (with light Sinhala phrases if the caller uses them).\n\n## YOUR JOB\n- Identify the caller's intent quickly (viewing booking, pricing question, browse listings, legal, complaint).\n- Capture as much detail as you can with save_customer_info, silently while talking: name, phone, email, budget, preferred area, property type, bedrooms, ideal viewing date.\n- Answer general questions you actually know. Never invent specific properties or prices.\n- Hand off to the right specialist when the question goes beyond your scope.\n\n## TRANSFER RULES\n- Wants to physically view a property → request_human_transfer(category=\"viewing\").\n- Asks specific price, wants to make an offer, wants to negotiate → request_human_transfer(category=\"pricing\").\n- Title, contracts, deeds, legal → request_human_transfer(category=\"legal\").\n- Anything you can't confidently handle → request_human_transfer(category=\"default\").\n\n## STYLE\n- Warm, concise, professional. Reassure callers when they sound stressed.\n- Always save_customer_info as facts come in — silently, while you keep talking.\n- When the caller is finished, thank them and call end_call.",
+  "custom_instructions": "",
+  "flow": {
+    "nodes": [
+      {"id": "start",         "type": "start",    "position": {"x":  40, "y": 260}, "data": {"label": "Start",         "greeting_text": "Greet caller warmly, ask how you can help with their property search."}},
+      {"id": "intent",        "type": "intent",   "position": {"x": 240, "y": 260}, "data": {"label": "Detect intent", "description": "Viewing booking? Pricing? Legal? General browse? Complaint?"}},
+
+      {"id": "save-basic",    "type": "tool",     "position": {"x": 460, "y":  80}, "data": {"label": "Save name+phone","tool_id": "save_customer_info", "arg_template": "Save name, phone (and email if offered)."}},
+      {"id": "save-pref",     "type": "tool",     "position": {"x": 700, "y":  80}, "data": {"label": "Save preferences","tool_id": "save_customer_info", "arg_template": "Save preferred_area, property_type, bedrooms, budget."}},
+
+      {"id": "ask-viewing",   "type": "response", "position": {"x": 460, "y": 200}, "data": {"label": "Ask viewing date","message_text": "When would you like to view the property?"}},
+      {"id": "save-viewing",  "type": "tool",     "position": {"x": 700, "y": 200}, "data": {"label": "Save viewing date","tool_id": "save_customer_info", "arg_template": "Save viewing_date."}},
+      {"id": "xfer-viewing",  "type": "transfer", "position": {"x": 940, "y": 200}, "data": {"label": "→ Viewing coordinator","category": "viewing"}},
+
+      {"id": "xfer-pricing",  "type": "transfer", "position": {"x": 460, "y": 340}, "data": {"label": "→ Pricing specialist","category": "pricing"}},
+      {"id": "xfer-legal",    "type": "transfer", "position": {"x": 460, "y": 440}, "data": {"label": "→ Legal team",       "category": "legal"}},
+
+      {"id": "save-complaint","type": "tool",     "position": {"x": 460, "y": 540}, "data": {"label": "Capture complaint", "tool_id": "save_customer_info", "arg_template": "Save field=complaint with caller's exact words."}},
+      {"id": "xfer-default",  "type": "transfer", "position": {"x": 700, "y": 540}, "data": {"label": "→ Duty manager",    "category": "default"}},
+
+      {"id": "end-ok",        "type": "end",      "position": {"x": 940, "y": 380}, "data": {"label": "End (handled)",    "farewell_text": "Thanks for calling, we'll follow up shortly. Have a great day."}}
+    ],
+    "edges": [
+      {"id": "e1",  "source": "start",          "target": "intent"},
+      {"id": "e2",  "source": "intent",         "target": "save-basic",   "label": "any caller info"},
+      {"id": "e3",  "source": "save-basic",     "target": "save-pref"},
+      {"id": "e4",  "source": "save-pref",      "target": "end-ok"},
+      {"id": "e5",  "source": "intent",         "target": "ask-viewing",  "label": "wants viewing"},
+      {"id": "e6",  "source": "ask-viewing",    "target": "save-viewing"},
+      {"id": "e7",  "source": "save-viewing",   "target": "xfer-viewing"},
+      {"id": "e8",  "source": "intent",         "target": "xfer-pricing", "label": "pricing/offer"},
+      {"id": "e9",  "source": "intent",         "target": "xfer-legal",   "label": "legal/contracts"},
+      {"id": "e10", "source": "intent",         "target": "save-complaint","label": "complaint"},
+      {"id": "e11", "source": "save-complaint", "target": "xfer-default"}
+    ],
+    "viewport": {"x": 0, "y": 0, "zoom": 1}
+  },
+  "created_at": "", "updated_at": ""
+}

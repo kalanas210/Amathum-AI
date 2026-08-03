@@ -1,0 +1,11 @@
+[Unit]
+Description=VoIP connectivity probe (gateway + Dialog SBC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pbx-monitor/voip-probe.sh
+User=asterisk
+Group=asterisk
+Nice=10

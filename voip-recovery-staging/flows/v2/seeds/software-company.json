@@ -1,0 +1,69 @@
+{
+  "id": "software-company",
+  "name": "Software Company Agent",
+  "description": "Tier-1 helpdesk for a software product — triages issues, captures repro steps, routes to engineering / sales / accounts.",
+  "is_preset": true,
+  "voice": "Kore",
+  "model": "gemini-3.1-flash-live-preview",
+  "language_hint": "en",
+  "greeting_trigger": "The customer has just connected to the helpdesk. Greet them, identify yourself, and ask how you can help today.",
+  "retry_greeting_trigger": "The customer was brought back because the engineer was unavailable. Apologise and take their details for a callback.",
+  "test_mode": true,
+  "test_mode_number": "0779190005",
+  "escalation_timeout_sec": 60,
+  "transfer_rules": [
+    {"category": "bug",      "manager_number": "0779190001", "description": "Bug reports / outages / something broken — connect to on-call engineering."},
+    {"category": "sales",    "manager_number": "0779190002", "description": "Pricing / upgrades / new licenses — connect to sales."},
+    {"category": "account",  "manager_number": "0779190003", "description": "Billing / account / password reset issues — connect to account management."},
+    {"category": "default",  "manager_number": "0779190005", "description": "Anything that doesn't match the above — connect to the duty manager."}
+  ],
+  "tools_enabled": ["save_customer_info", "request_human_transfer", "end_call"],
+  "tools_config": {
+    "save_customer_info": {"fields": ["name","email","company","product","version","issue_summary","repro_steps","severity","when_started"]}
+  },
+  "working_hours": {
+    "enabled": false, "timezone": "Asia/Colombo",
+    "schedule": {"0":"","1":"08:00-20:00","2":"08:00-20:00","3":"08:00-20:00","4":"08:00-20:00","5":"08:00-20:00","6":""},
+    "out_of_hours_action": "transfer",
+    "out_of_hours_greeting": "Thanks for calling support — outside business hours I'll connect you to on-call engineering.",
+    "out_of_hours_transfer_category": "bug",
+    "out_of_hours_hangup_message": ""
+  },
+  "record_calls": false,
+  "system_prompt": "You are Alex, a calm and methodical Tier-1 helpdesk agent for a software product. You speak clear English.\n\n## YOUR JOB\n- Greet the caller, identify yourself, and ask what's going on.\n- For incident reports: capture name, email, company, which product, which version, a clear one-line issue_summary, repro_steps, severity (blocker / major / minor), and when_started.\n- Save each fact with save_customer_info silently as you keep talking.\n- Triage to the right team — don't pretend to know product internals.\n\n## TRANSFER RULES\n- Something is broken / outage / can't log in / errors → request_human_transfer(category=\"bug\").\n- Pricing, plans, upgrades, buying licenses → request_human_transfer(category=\"sales\").\n- Billing / invoice / password reset / account ownership → request_human_transfer(category=\"account\").\n- Anything else or unclear → request_human_transfer(category=\"default\").\n\n## STYLE\n- Calm, empathetic when something's broken. Confirm severity before escalating.\n- When the caller is satisfied, thank them and call end_call.",
+  "custom_instructions": "",
+  "flow": {
+    "nodes": [
+      {"id": "start",        "type": "start",    "position": {"x":  40, "y": 280}, "data": {"label": "Start", "greeting_text": "Greet caller, identify yourself, ask how to help."}},
+      {"id": "triage",       "type": "intent",   "position": {"x": 240, "y": 280}, "data": {"label": "Triage", "description": "Bug report? Sales question? Account/billing? General?"}},
+
+      {"id": "ask-product",  "type": "response", "position": {"x": 460, "y": 100}, "data": {"label": "Ask product+version", "message_text": "Which product and version are you using?"}},
+      {"id": "save-product", "type": "tool",     "position": {"x": 700, "y": 100}, "data": {"label": "Save product info",   "tool_id": "save_customer_info", "arg_template": "Save product, version, company."}},
+      {"id": "ask-issue",    "type": "response", "position": {"x": 940, "y": 100}, "data": {"label": "Ask what's wrong",    "message_text": "What's happening? Can you walk me through the steps to reproduce it?"}},
+      {"id": "save-issue",   "type": "tool",     "position": {"x":1180, "y": 100}, "data": {"label": "Save issue+repro",    "tool_id": "save_customer_info", "arg_template": "Save issue_summary, repro_steps, severity, when_started."}},
+      {"id": "xfer-bug",     "type": "transfer", "position": {"x":1180, "y": 220}, "data": {"label": "→ On-call engineering","category": "bug"}},
+
+      {"id": "xfer-sales",   "type": "transfer", "position": {"x": 460, "y": 360}, "data": {"label": "→ Sales",   "category": "sales"}},
+      {"id": "xfer-account", "type": "transfer", "position": {"x": 460, "y": 460}, "data": {"label": "→ Accounts","category": "account"}},
+
+      {"id": "save-misc",    "type": "tool",     "position": {"x": 460, "y": 560}, "data": {"label": "Capture general note","tool_id": "save_customer_info", "arg_template": "Save field=issue_summary or field=complaint with verbatim text."}},
+      {"id": "xfer-default", "type": "transfer", "position": {"x": 700, "y": 560}, "data": {"label": "→ Duty manager","category": "default"}},
+
+      {"id": "end-ok",       "type": "end",      "position": {"x": 940, "y": 400}, "data": {"label": "End (handled)", "farewell_text": "Thanks for calling, we'll follow up."}}
+    ],
+    "edges": [
+      {"id": "e1",  "source": "start",        "target": "triage"},
+      {"id": "e2",  "source": "triage",       "target": "ask-product",  "label": "bug/broken thing"},
+      {"id": "e3",  "source": "ask-product",  "target": "save-product"},
+      {"id": "e4",  "source": "save-product", "target": "ask-issue"},
+      {"id": "e5",  "source": "ask-issue",    "target": "save-issue"},
+      {"id": "e6",  "source": "save-issue",   "target": "xfer-bug"},
+      {"id": "e7",  "source": "triage",       "target": "xfer-sales",   "label": "wants to buy"},
+      {"id": "e8",  "source": "triage",       "target": "xfer-account", "label": "billing/account"},
+      {"id": "e9",  "source": "triage",       "target": "save-misc",    "label": "other"},
+      {"id": "e10", "source": "save-misc",    "target": "xfer-default"}
+    ],
+    "viewport": {"x": 0, "y": 0, "zoom": 1}
+  },
+  "created_at": "", "updated_at": ""
+}

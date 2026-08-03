@@ -1,0 +1,24 @@
+# Patch for /etc/asterisk/extensions.conf
+#
+# Adds one ExecIf at the top of the [ai-escalate] context so the per-call
+# AI_MGR_NUMBER channel variable (set by bridge.ts before the AMI Redirect)
+# takes precedence over the legacy jq-from-agent-config.json lookup.
+#
+# The existing jq fallback path is preserved so a missing/empty AI_MGR_NUMBER
+# never strands a call.
+#
+# install-flows.sh applies this with `sed -i` (idempotent — checks for marker).
+
+# === Marker that install-flows.sh greps for to know it's already applied ===
+# FLOWS-PATCH-V1: AI_MGR_NUMBER
+
+# === Insert this line right after `exten => s,1,NoOp(...)` (line ~301) ===
+# (See install-flows.sh for the exact sed transformation.)
+#
+#  same => n,ExecIf($["${AI_MGR_NUMBER}" != ""]?Set(MGR=${AI_MGR_NUMBER})) ; FLOWS-PATCH-V1: AI_MGR_NUMBER
+#
+# Effect: if AI_MGR_NUMBER is set on the channel, MGR is set from it and
+# the subsequent jq lookup overwrites MGR only if test_mode=="false" AND
+# the per-call value wasn't provided. We then re-protect MGR after the jq
+# block by re-applying the ExecIf, which is what install-flows.sh actually
+# does (two ExecIfs sandwich the jq logic so the channel var always wins).

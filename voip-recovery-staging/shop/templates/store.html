@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="utf-8">
+<title>{{ store_name }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{ tagline }}">
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = { theme: { extend: {
+    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+    colors: { brand: { DEFAULT: '#4f46e5', dark: '#4338ca' } },
+  } } };
+</script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .card-grad { background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 55%, #ecfeff 100%); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  [x-cloak] { display: none; }
+</style>
+</head>
+<body class="h-full bg-slate-50 text-slate-800">
+
+<!-- header -->
+<header class="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+    <a href="/" class="flex items-center gap-2.5">
+      <span class="w-9 h-9 rounded-xl bg-brand text-white grid place-items-center text-lg">🛍️</span>
+      <span class="font-extrabold text-lg tracking-tight">{{ store_name }}</span>
+    </a>
+    <div class="flex-1 max-w-sm hidden sm:block">
+      <input id="search" oninput="render()" placeholder="Search products…"
+        class="w-full px-4 py-2 text-sm rounded-full border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand outline-none transition">
+    </div>
+    <button onclick="openCart()" class="relative inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-dark transition">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+      Cart <span id="cart-count" class="ml-0.5 min-w-5 h-5 px-1 grid place-items-center text-[11px] font-bold bg-white text-brand rounded-full">0</span>
+    </button>
+  </div>
+</header>
+
+<!-- hero -->
+<section class="card-grad border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-4 py-12 sm:py-16">
+    <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">{{ tagline }}</h1>
+    <p class="mt-3 text-slate-600 max-w-xl">Order online or call us — we'll ring you back to confirm and arrange delivery. Cash on delivery available.</p>
+    <div id="cat-bar" class="mt-6 flex flex-wrap gap-2"></div>
+  </div>
+</section>
+
+<!-- products -->
+<main class="max-w-6xl mx-auto px-4 py-8">
+  <div id="grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div class="col-span-full text-center text-slate-400 py-16">Loading products…</div>
+  </div>
+</main>
+
+<footer class="border-t border-slate-200 mt-8">
+  <div class="max-w-6xl mx-auto px-4 py-8 text-sm text-slate-500 flex flex-wrap items-center justify-between gap-2">
+    <span>© {{ store_name }} — powered by Ryzera</span>
+    <span>Need help? Call our hotline and order by phone.</span>
+  </div>
+</footer>
+
+<!-- cart drawer -->
+<div id="cart-overlay" class="fixed inset-0 bg-black/40 z-40 hidden" onclick="closeCart()"></div>
+<aside id="cart" class="fixed top-0 right-0 h-full w-full max-w-md bg-white z-50 shadow-2xl translate-x-full transition-transform duration-300 flex flex-col">
+  <div class="px-5 h-16 flex items-center justify-between border-b border-slate-200">
+    <h2 class="font-bold text-lg">Your cart</h2>
+    <button onclick="closeCart()" class="p-2 text-slate-400 hover:text-slate-800">✕</button>
+  </div>
+  <div id="cart-items" class="flex-1 overflow-y-auto px-5 py-4 space-y-3"></div>
+  <div id="cart-foot" class="border-t border-slate-200 p-5 space-y-3"></div>
+</aside>
+
+<!-- toast -->
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] hidden px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg"></div>
+
+<script>
+const CUR = "{{ currency }}";
+let PRODUCTS = [], CATS = [], activeCat = 'All';
+let cart = {};
+try { cart = JSON.parse(localStorage.getItem('cart') || '{}'); } catch (e) { cart = {}; }
+
+const money = (n) => CUR + ' ' + Number(n || 0).toLocaleString();
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function saveCart() { localStorage.setItem('cart', JSON.stringify(cart)); paintCount(); }
+function paintCount() { const n = Object.values(cart).reduce((a, x) => a + x, 0); document.getElementById('cart-count').textContent = n; }
+function toast(msg, ok) {
+  const t = document.getElementById('toast');
+  t.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg ' + (ok ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white');
+  t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 3000);
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/products'); const j = await r.json();
+    PRODUCTS = j.products || []; CATS = ['All'].concat(j.categories || []);
+  } catch (e) { PRODUCTS = []; }
+  paintCats(); render(); paintCount();
+}
+function paintCats() {
+  document.getElementById('cat-bar').innerHTML = CATS.map(c =>
+    `<button onclick="activeCat='${c}';paintCats();render()" class="px-3.5 py-1.5 rounded-full text-sm font-medium border transition ${c === activeCat ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}">${esc(c)}</button>`
+  ).join('');
+}
+function stockBadge(p) {
+  if (!p.in_stock) return '<span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">Out of stock</span>';
+  if (p.available <= 5) return `<span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Only ${p.available} left</span>`;
+  return '<span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">In stock</span>';
+}
+function render() {
+  const q = (document.getElementById('search').value || '').toLowerCase();
+  let list = PRODUCTS.filter(p => (activeCat === 'All' || p.category === activeCat) &&
+    (!q || (p.name + ' ' + p.category + ' ' + p.blurb).toLowerCase().includes(q)));
+  const grid = document.getElementById('grid');
+  if (!list.length) { grid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-16">No products found.</div>'; return; }
+  grid.innerHTML = list.map(p => `
+    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col hover:shadow-md transition">
+      <div class="card-grad aspect-square grid place-items-center text-6xl">${p.emoji || '📦'}</div>
+      <div class="p-4 flex flex-col flex-1">
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="font-semibold text-sm leading-snug text-slate-900">${esc(p.name)}</h3>
+        </div>
+        <p class="text-[12px] text-slate-500 mt-1 line-clamp-2 flex-1">${esc(p.blurb)}</p>
+        <div class="mt-2">${stockBadge(p)}</div>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="font-bold text-slate-900">${money(p.price)}</span>
+          <button ${p.in_stock ? '' : 'disabled'} onclick="addToCart('${p.sku}')"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium transition ${p.in_stock ? 'bg-brand text-white hover:bg-brand-dark' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}">
+            ${p.in_stock ? 'Add' : 'Sold out'}</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function prod(sku) { return PRODUCTS.find(p => p.sku === sku); }
+function addToCart(sku) {
+  const p = prod(sku); if (!p || !p.in_stock) return;
+  const cur = cart[sku] || 0;
+  if (cur + 1 > p.available) { toast('No more stock for ' + p.name); return; }
+  cart[sku] = cur + 1; saveCart(); toast(p.name + ' added to cart', true); paintCart();
+}
+function setQty(sku, q) {
+  const p = prod(sku); q = Math.max(0, q);
+  if (p && q > p.available) { q = p.available; toast('Only ' + p.available + ' in stock'); }
+  if (q === 0) delete cart[sku]; else cart[sku] = q;
+  saveCart(); paintCart();
+}
+function openCart() { paintCart(); document.getElementById('cart-overlay').classList.remove('hidden'); document.getElementById('cart').classList.remove('translate-x-full'); }
+function closeCart() { document.getElementById('cart-overlay').classList.add('hidden'); document.getElementById('cart').classList.add('translate-x-full'); }
+function cartLines() { return Object.entries(cart).map(([sku, qty]) => ({ p: prod(sku), qty })).filter(x => x.p); }
+function cartTotal() { return cartLines().reduce((a, x) => a + x.p.price * x.qty, 0); }
+
+function paintCart() {
+  const lines = cartLines();
+  const box = document.getElementById('cart-items'), foot = document.getElementById('cart-foot');
+  if (!lines.length) {
+    box.innerHTML = '<div class="text-center text-slate-400 py-16">Your cart is empty.</div>';
+    foot.innerHTML = ''; return;
+  }
+  box.innerHTML = lines.map(({ p, qty }) => `
+    <div class="flex items-center gap-3">
+      <div class="card-grad w-14 h-14 rounded-xl grid place-items-center text-2xl shrink-0">${p.emoji || '📦'}</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-slate-900 truncate">${esc(p.name)}</div>
+        <div class="text-xs text-slate-500">${money(p.price)}</div>
+        <div class="mt-1 inline-flex items-center border border-slate-200 rounded-lg">
+          <button onclick="setQty('${p.sku}',${qty - 1})" class="w-7 h-7 grid place-items-center text-slate-500 hover:text-slate-900">−</button>
+          <span class="w-8 text-center text-sm">${qty}</span>
+          <button onclick="setQty('${p.sku}',${qty + 1})" class="w-7 h-7 grid place-items-center text-slate-500 hover:text-slate-900">+</button>
+        </div>
+      </div>
+      <div class="text-sm font-semibold">${money(p.price * qty)}</div>
+    </div>`).join('');
+  foot.innerHTML = `
+    <div class="flex items-center justify-between text-sm"><span class="text-slate-500">Subtotal</span><span class="font-bold text-lg">${money(cartTotal())}</span></div>
+    <button onclick="openCheckout()" class="w-full py-3 rounded-xl bg-brand text-white font-semibold hover:bg-brand-dark transition">Checkout</button>`;
+}
+
+function openCheckout() {
+  if (!cartLines().length) return;
+  const box = document.getElementById('cart-items'), foot = document.getElementById('cart-foot');
+  box.innerHTML = `
+    <h3 class="font-semibold text-slate-900">Delivery details</h3>
+    <input id="co-name" placeholder="Full name" class="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-brand outline-none">
+    <input id="co-phone" placeholder="Phone (we'll call to confirm)" class="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-brand outline-none">
+    <textarea id="co-address" rows="2" placeholder="Delivery address" class="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-brand outline-none"></textarea>
+    <div class="flex gap-2">
+      <label class="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-indigo-50"><input type="radio" name="pay" value="COD" checked class="mr-2">Cash on delivery</label>
+      <label class="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm cursor-pointer has-[:checked]:border-brand has-[:checked]:bg-indigo-50"><input type="radio" name="pay" value="Card" class="mr-2">Card</label>
+    </div>`;
+  foot.innerHTML = `
+    <div class="flex items-center justify-between text-sm"><span class="text-slate-500">Total</span><span class="font-bold text-lg">${money(cartTotal())}</span></div>
+    <button onclick="placeOrder(this)" class="w-full py-3 rounded-xl bg-brand text-white font-semibold hover:bg-brand-dark transition">Place order</button>
+    <button onclick="paintCart()" class="w-full py-2 text-sm text-slate-500 hover:text-slate-800">← Back to cart</button>`;
+}
+
+async function placeOrder(btn) {
+  const name = document.getElementById('co-name').value.trim();
+  const phone = document.getElementById('co-phone').value.trim();
+  const address = document.getElementById('co-address').value.trim();
+  const payment = (document.querySelector('input[name=pay]:checked') || {}).value || 'COD';
+  if (!name || phone.replace(/\D/g, '').length < 7) { toast('Please enter your name and a valid phone'); return; }
+  btn.disabled = true; btn.textContent = 'Placing…';
+  const items = cartLines().map(({ p, qty }) => ({ sku: p.sku, qty }));
+  try {
+    const r = await fetch('/api/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customer: name, phone, address, payment, items }) });
+    const j = await r.json();
+    if (!j.ok) { toast(j.error || 'Could not place order'); btn.disabled = false; btn.textContent = 'Place order'; await load(); return; }
+    cart = {}; saveCart();
+    showConfirmation(j);
+  } catch (e) { toast('Network error — please try again'); btn.disabled = false; btn.textContent = 'Place order'; }
+}
+
+function showConfirmation(j) {
+  document.getElementById('cart-items').innerHTML = `
+    <div class="text-center py-10">
+      <div class="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-600 grid place-items-center text-3xl">✓</div>
+      <h3 class="mt-4 font-bold text-lg text-slate-900">Order placed!</h3>
+      <p class="mt-1 text-sm text-slate-500">${esc(j.message || '')}</p>
+      <div class="mt-4 inline-block bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm">Reference <span class="font-mono font-semibold">${esc(j.ref)}</span></div>
+      <p class="mt-2 text-sm text-slate-500">Total: <span class="font-semibold">${money(j.total)}</span></p>
+    </div>`;
+  document.getElementById('cart-foot').innerHTML = `<button onclick="closeCart();render()" class="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold">Continue shopping</button>`;
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

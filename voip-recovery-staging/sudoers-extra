@@ -1,0 +1,8 @@
+# Additional NOPASSWD entries for the pbx-monitor (asterisk user) — soft-recovery support.
+# Installed alongside the existing /etc/sudoers.d/pbx-monitor by install.sh.
+# Visudo-validated before install (visudo -cf).
+asterisk ALL=(root) NOPASSWD: /usr/bin/systemctl restart sip-trunk-route
+asterisk ALL=(root) NOPASSWD: /usr/bin/systemctl restart sampath-ai
+asterisk ALL=(root) NOPASSWD: /usr/bin/systemctl reload asterisk
+asterisk ALL=(root) NOPASSWD: /opt/pbx-monitor/snapshot.sh
+asterisk ALL=(root) NOPASSWD: /opt/pbx-monitor/snapshot.sh *

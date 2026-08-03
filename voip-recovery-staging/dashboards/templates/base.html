@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}PBX Monitor{% endblock %} · Ryzera</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  (function(){
+    const t = localStorage.getItem('theme');
+    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
+      document.documentElement.classList.add('dark');
+  })();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  /* === LIGHT === */
+  :root {
+    --bg:           0 0% 100%;
+    --fg:           224 71% 4%;
+    --card:         0 0% 100%;
+    --card-hover:   220 14% 98%;
+    --elevated:    220 14% 98%;
+    --border:      220 13% 91%;
+    --border-strong: 220 13% 85%;
+    --muted:       220 14% 96%;
+    --muted-fg:    220 9% 46%;
+    --primary:     224 71% 4%;
+    --primary-fg:  210 20% 98%;
+    --accent:      220 14% 96%;
+    --accent-fg:   224 71% 4%;
+    --code-bg:     220 14% 96%;
+    --code-fg:     224 71% 12%;
+    --ring:        224 71% 4%;
+    --emerald-bg:  152 81% 96%;
+    --emerald-fg:  158 64% 30%;
+    --rose-bg:     0 86% 97%;
+    --rose-fg:     0 72% 51%;
+    --amber-bg:    48 100% 96%;
+    --amber-fg:    25 95% 40%;
+    --sky-bg:      214 95% 93%;
+    --sky-fg:      221 83% 53%;
+  }
+  /* === DARK (Linear/Vercel style) === */
+  .dark {
+    --bg:          224 12% 6%;
+    --fg:          220 13% 95%;
+    --card:        224 13% 8%;
+    --card-hover:  224 13% 11%;
+    --elevated:    224 13% 11%;
+    --border:      220 13% 16%;
+    --border-strong: 220 13% 22%;
+    --muted:       224 13% 12%;
+    --muted-fg:    220 9% 62%;
+    --primary:     220 13% 95%;
+    --primary-fg:  224 71% 8%;
+    --accent:      224 13% 14%;
+    --accent-fg:   220 13% 95%;
+    --code-bg:     224 16% 4%;
+    --code-fg:     220 13% 88%;
+    --ring:        220 13% 95%;
+    --emerald-bg:  158 64% 12%;
+    --emerald-fg:  158 64% 56%;
+    --rose-bg:     0 63% 18%;
+    --rose-fg:     0 90% 75%;
+    --amber-bg:    25 95% 14%;
+    --amber-fg:    37 92% 70%;
+    --sky-bg:      215 50% 18%;
+    --sky-fg:      214 95% 75%;
+  }
+  html, body {
+    background: hsl(var(--bg));
+    color: hsl(var(--fg));
+  }
+  body {
+    font-feature-settings: "cv02","cv03","cv04","cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Native <code> styling — works in both modes */
+  code, kbd {
+    font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
+    background: hsl(var(--code-bg));
+    color: hsl(var(--code-fg));
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 500;
+    border: 1px solid hsl(var(--border));
+  }
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border-strong)); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-fg)); }
+  /* Form inputs respect theme */
+  input, textarea, select {
+    background: hsl(var(--card));
+    color: hsl(var(--fg));
+    border-color: hsl(var(--border));
+  }
+  input::placeholder, textarea::placeholder { color: hsl(var(--muted-fg)); }
+  input:focus, textarea:focus, select:focus {
+    outline: 2px solid hsl(var(--ring) / 0.35);
+    outline-offset: 1px;
+    border-color: hsl(var(--ring));
+  }
+  /* Table row hover */
+  tbody tr:hover { background: hsl(var(--card-hover)); }
+  /* Generic terminal/output preformatted blocks */
+  pre.term {
+    background: hsl(var(--code-bg));
+    color: hsl(var(--code-fg));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    font-family: 'JetBrains Mono', Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  /* Selection */
+  ::selection { background: hsl(var(--accent)); color: hsl(var(--fg)); }
+</style>
+<script>
+  tailwind.config = { darkMode:'class', theme:{ extend:{
+    colors:{
+      bg:'hsl(var(--bg))', fg:'hsl(var(--fg))',
+      card:'hsl(var(--card))', 'card-hover':'hsl(var(--card-hover))',
+      elevated:'hsl(var(--elevated))',
+      border:'hsl(var(--border))', 'border-strong':'hsl(var(--border-strong))',
+      muted:'hsl(var(--muted))', 'muted-fg':'hsl(var(--muted-fg))',
+      primary:'hsl(var(--primary))', 'primary-fg':'hsl(var(--primary-fg))',
+      accent:'hsl(var(--accent))', 'accent-fg':'hsl(var(--accent-fg))',
+      'emerald-bg':'hsl(var(--emerald-bg))', 'emerald-fg':'hsl(var(--emerald-fg))',
+      'rose-bg':'hsl(var(--rose-bg))', 'rose-fg':'hsl(var(--rose-fg))',
+      'amber-bg':'hsl(var(--amber-bg))', 'amber-fg':'hsl(var(--amber-fg))',
+      'sky-bg':'hsl(var(--sky-bg))', 'sky-fg':'hsl(var(--sky-fg))',
+    },
+    fontFamily:{ sans:['Inter','system-ui','sans-serif'], mono:['JetBrains Mono','Menlo','monospace'] },
+    boxShadow:{ subtle:'0 1px 2px 0 rgb(0 0 0 / 0.04)' },
+  }}}
+</script>
+</head>
+<body class="h-full font-sans">
+
+<div class="flex h-full">
+  <!-- Sidebar -->
+  <aside class="w-60 border-r border-border bg-card flex flex-col">
+    <div class="px-5 py-4 border-b border-border">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-primary text-primary-fg flex items-center justify-center">
+          <i data-lucide="phone-call" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <div class="font-semibold text-sm leading-tight text-fg">Ryzera PBX</div>
+          <div class="text-[11px] text-muted-fg">DID 0114794050</div>
+        </div>
+      </div>
+    </div>
+
+    {% set _ind = nav[5:] if nav and nav.startswith('dash-') else None %}
+    {% set current_ws_label = dashboards_registry[_ind].label if _ind else 'Main PBX' %}
+    {% set current_ws_icon = dashboards_registry[_ind].icon if _ind else 'phone-call' %}
+    {% if user_dashboards %}
+    <div class="px-3 pt-3">
+      <div class="text-[10px] uppercase tracking-wider text-muted-fg font-medium px-2 mb-1">Workspace</div>
+      <div class="relative">
+        <button onclick="toggleWsMenu(event)" class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-border bg-bg hover:bg-accent transition-colors text-sm">
+          <span class="flex items-center gap-2 min-w-0">
+            <i data-lucide="{{ current_ws_icon }}" class="w-4 h-4 shrink-0 text-muted-fg"></i>
+            <span class="truncate font-medium text-fg">{{ current_ws_label }}</span>
+          </span>
+          <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-muted-fg shrink-0"></i>
+        </button>
+        <div id="ws-menu" class="hidden absolute left-0 right-0 z-30 mt-1 bg-card border border-border rounded-md shadow-lg py-1">
+          <a href="/" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent {% if not _ind %}font-medium text-fg bg-accent/50{% else %}text-muted-fg{% endif %}">
+            <i data-lucide="phone-call" class="w-4 h-4 shrink-0"></i> <span>Main PBX</span>
+          </a>
+          {% for d in user_dashboards %}
+          <a href="/dashboard/{{ d }}" class="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent {% if _ind == d %}font-medium text-fg bg-accent/50{% else %}text-muted-fg{% endif %}">
+            <i data-lucide="{{ dashboards_registry[d].icon }}" class="w-4 h-4 shrink-0"></i> <span>{{ dashboards_registry[d].label }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <nav class="flex-1 px-3 py-4 space-y-0.5 text-sm overflow-y-auto">
+      {% if _ind %}
+      <a href="/" class="flex items-center gap-2.5 px-3 py-2 rounded-md text-muted-fg hover:bg-accent hover:text-fg transition-colors">
+        <i data-lucide="arrow-left" class="w-4 h-4 shrink-0"></i><span>Back to PBX</span>
+      </a>
+      <div class="text-[10px] uppercase tracking-wider text-muted-fg font-medium px-3 pt-3 pb-1">{{ current_ws_label }}</div>
+      <a href="/dashboard/{{ _ind }}" class="flex items-center gap-2.5 px-3 py-2 rounded-md bg-accent text-accent-fg font-medium">
+        <i data-lucide="{{ current_ws_icon }}" class="w-4 h-4 shrink-0"></i><span>{{ current_ws_label }} home</span>
+      </a>
+      <div id="ind-nav" class="space-y-0.5 pt-1"></div>
+      {% else %}
+      {% set all_items = [
+        ('dashboard','/','layout-dashboard','Dashboard','read'),
+        ('make-call','/make-call','phone-outgoing','Make call','call'),
+        ('broadcast','/broadcast','megaphone','Broadcast','call'),
+        ('webphone','/webphone','globe','Web phone','call'),
+        ('calls','/calls','phone-incoming','Calls','read'),
+        ('recordings','/recordings','disc','Recordings','read'),
+        ('voicemail','/voicemail','voicemail','Voicemail','read'),
+        ('ai-agent','/ai-agent','bot','AI Agent','config'),
+        ('flows','/flows','workflow','Flows','admin'),
+        ('agent-mode','/agent-mode','toggle-right','Agent Mode','admin'),
+        ('customers','/customers','contact','Customers','read'),
+        ('endpoints','/endpoints','users','Endpoints','read'),
+        ('trunk','/trunk','radio-tower','Trunk','read'),
+        ('dialplan','/dialplan','git-branch','Dialplan','config'),
+        ('pjsip','/pjsip','file-code-2','PJSIP config','config'),
+        ('sounds','/sounds','volume-2','Sound files','config'),
+        ('logs','/logs','scroll-text','Logs','read'),
+        ('system','/system','server','System','read'),
+        ('users','/users','user-cog','Users','admin'),
+        ('settings','/settings','settings','Settings','read')
+      ] %}
+      {% for key, url, icon, label, req in all_items %}
+        {% if req in role_perms %}
+        <a href="{{ url }}" class="flex items-center gap-2.5 px-3 py-2 rounded-md transition-colors {% if nav == key %}bg-accent text-accent-fg font-medium{% else %}text-muted-fg hover:bg-accent hover:text-fg{% endif %}">
+          <i data-lucide="{{ icon }}" class="w-4 h-4 shrink-0"></i><span>{{ label }}</span>
+        </a>
+        {% endif %}
+      {% endfor %}
+      {% endif %}
+    </nav>
+
+    <div class="border-t border-border p-3 mx-2 mb-2">
+      <div class="flex items-center gap-2.5 px-2 py-2">
+        <div class="w-7 h-7 rounded-full bg-accent text-accent-fg flex items-center justify-center text-xs font-medium ring-1 ring-border">
+          {{ current_user[0]|upper if current_user else '?' }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-medium truncate text-fg">{{ current_user or 'anon' }}</div>
+          <div class="text-[11px] text-muted-fg flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 bg-sky-bg text-sky-fg rounded text-[10px] font-medium">{{ current_role }}</span>
+            <a href="{{ url_for('logout') }}" class="hover:text-fg">Sign out</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 overflow-y-auto bg-bg">
+    <header class="border-b border-border bg-card sticky top-0 z-10 backdrop-blur">
+      <div class="flex items-center justify-between px-6 py-3">
+        <div>
+          <h1 class="text-base font-semibold text-fg">{% block page_title %}{% endblock %}</h1>
+          <p class="text-xs text-muted-fg">{% block page_subtitle %}{% endblock %}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          {% block page_actions %}{% endblock %}
+          <button onclick="toggleTheme()" class="p-2 text-muted-fg hover:bg-accent hover:text-fg rounded-md transition-colors" title="Toggle theme">
+            <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+            <i data-lucide="sun" class="w-4 h-4 hidden dark:inline"></i>
+          </button>
+          <span class="text-xs text-muted-fg whitespace-nowrap" id="updated-at"></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="p-6 space-y-6">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, msg in messages %}
+      <div class="px-4 py-2.5 rounded-md text-sm {% if category == 'error' %}bg-rose-bg text-rose-fg border border-rose-fg/20{% else %}bg-emerald-bg text-emerald-fg border border-emerald-fg/20{% endif %}">{{ msg }}</div>
+      {% endfor %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<script>
+  lucide.createIcons();
+  function toggleWsMenu(e){
+    if (e) e.stopPropagation();
+    const m = document.getElementById('ws-menu');
+    if (m) m.classList.toggle('hidden');
+  }
+  document.addEventListener('click', function(){
+    const m = document.getElementById('ws-menu');
+    if (m && !m.classList.contains('hidden')) m.classList.add('hidden');
+  });
+  function toggleTheme(){
+    const html = document.documentElement;
+    const isDark = html.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    lucide.createIcons();
+    if (typeof refreshCharts === 'function') refreshCharts();
+  }
+  function setUpdatedAt(){ const el=document.getElementById('updated-at'); if(el) el.textContent='Updated '+new Date().toLocaleTimeString(); }
+  async function apiPost(url, body){ const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: body? JSON.stringify(body): null}); return r.json(); }
+  async function apiGet(url){ const r = await fetch(url); return r.json(); }
+  function fmtBytes(n){ if(n<1024) return n+' B'; if(n<1024*1024) return (n/1024).toFixed(1)+' KB'; return (n/1024/1024).toFixed(1)+' MB'; }
+  function toast(text, kind='success'){
+    const t = document.createElement('div');
+    const styles = {
+      success: 'bg-emerald-bg text-emerald-fg border-emerald-fg/30',
+      error:   'bg-rose-bg text-rose-fg border-rose-fg/30',
+    };
+    t.className = `fixed bottom-4 right-4 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg z-50 border ${styles[kind]||styles.success}`;
+    t.textContent = text;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 3500);
+  }
+  function badge(text, kind){
+    const m={emerald:'bg-emerald-bg text-emerald-fg border-emerald-fg/20',
+             rose:'bg-rose-bg text-rose-fg border-rose-fg/20',
+             amber:'bg-amber-bg text-amber-fg border-amber-fg/20',
+             sky:'bg-sky-bg text-sky-fg border-sky-fg/20',
+             muted:'bg-muted text-muted-fg border-border'};
+    return `<span class="px-2 py-0.5 rounded-md text-[11px] border font-medium ${m[kind]||m.muted}">${text||'-'}</span>`;
+  }
+  function dispBadge(d){
+    const k = d==='ANSWERED'?'emerald':(d==='BUSY'||d==='FAILED')?'rose':d==='NO ANSWER'?'amber':'muted';
+    return badge(d, k);
+  }
+</script>
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}Users{% endblock %}
+{% block page_subtitle %}Manage accounts that can sign in to this admin panel{% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card max-w-2xl overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Add user</h3>
+    <p class="text-[11px] text-muted-fg mt-0.5">Roles: <code>admin</code> (full), <code>operator</code> (read + calls), <code>viewer</code> (read only)</p>
+  </div>
+  <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium text-muted-fg mb-1.5">Email</label>
+      <input id="new-email" type="email" placeholder="name@company.com"
+        class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card text-fg">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-muted-fg mb-1.5">Password (8+ chars)</label>
+      <input id="new-password" type="password"
+        class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card text-fg">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-muted-fg mb-1.5">Role</label>
+      <select id="new-role" class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card text-fg">
+        <option>admin</option><option selected>operator</option><option>viewer</option>
+      </select>
+    </div>
+    <div class="sm:col-span-2">
+      <label class="block text-xs font-medium text-muted-fg mb-1.5">Industry dashboards</label>
+      <p class="text-[11px] text-muted-fg mb-2">Grant access to one or more vertical dashboards, on top of the main PBX panel. Admins always see all dashboards.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {% for id, d in dashboards_registry.items() %}
+        <label class="flex items-start gap-2 px-3 py-2 border border-border rounded-md bg-bg cursor-pointer hover:bg-card-hover transition-colors">
+          <input type="checkbox" class="new-dash mt-0.5" value="{{ id }}">
+          <span class="min-w-0">
+            <span class="flex items-center gap-1.5 text-sm font-medium text-fg"><i data-lucide="{{ d.icon }}" class="w-3.5 h-3.5"></i>{{ d.label }}</span>
+            <span class="block text-[11px] text-muted-fg leading-tight mt-0.5">{{ d.desc }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="sm:col-span-2 flex items-center gap-3 pt-2 border-t border-border">
+      <button onclick="addUser()" class="px-4 py-2 bg-primary text-primary-fg rounded-md text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
+        <i data-lucide="user-plus" class="w-4 h-4"></i> Add user
+      </button>
+      <span id="add-status" class="text-xs"></span>
+    </div>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">All users</h3>
+    <p class="text-[11px] text-muted-fg mt-0.5">Click a dashboard chip to toggle that user's access.</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50"><tr class="text-[11px] text-muted-fg uppercase tracking-wider">
+        <th class="text-left px-5 py-2.5 font-medium">Email</th>
+        <th class="text-left px-5 py-2.5 font-medium">Role</th>
+        <th class="text-left px-5 py-2.5 font-medium">Dashboards</th>
+        <th class="text-left px-5 py-2.5 font-medium">Created</th>
+        <th class="text-right px-5 py-2.5 font-medium">Actions</th>
+      </tr></thead>
+      <tbody id="users-tbody" class="text-fg"><tr><td colspan="5" class="px-5 py-6 text-center text-muted-fg text-sm">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DASH_REG = {{ dashboards_registry|tojson }};
+const DASH_IDS = Object.keys(DASH_REG);
+
+function dashChips(u){
+  if (u.role === 'admin') return '<span class="text-[11px] text-muted-fg italic">all (admin)</span>';
+  const have = new Set(u.dashboards||[]);
+  return DASH_IDS.map(id=>{
+    const on = have.has(id);
+    const cls = on ? 'bg-sky-bg text-sky-fg border-sky-fg/30' : 'bg-muted text-muted-fg border-border opacity-60';
+    return `<button onclick="toggleDash('${u.email}','${id}')" title="${on?'Remove':'Grant'} ${DASH_REG[id].label} access"
+      class="px-2 py-0.5 rounded-md text-[11px] border font-medium mr-1 mb-1 transition-colors ${cls}">${DASH_REG[id].label}</button>`;
+  }).join('');
+}
+
+async function refresh(){
+  setUpdatedAt();
+  const list = await apiGet('/api/users');
+  window._users = {}; list.forEach(u=>window._users[u.email]=u);
+  document.getElementById('users-tbody').innerHTML = list.map(u=>{
+    const isSelf = u.email === '{{ current_user }}';
+    const rolePill = `<select onchange="updateRole('${u.email}', this.value)" class="text-xs border border-border bg-card text-fg rounded px-1.5 py-0.5" ${isSelf?'disabled':''}>
+      ${['admin','operator','viewer'].map(r=>`<option ${u.role===r?'selected':''}>${r}</option>`).join('')}</select>`;
+    return `<tr class="border-t border-border">
+      <td class="px-5 py-2.5 align-top"><code>${u.email}</code> ${isSelf?'<span class="text-[10px] text-muted-fg ml-1">(you)</span>':''}</td>
+      <td class="px-5 py-2.5 align-top">${rolePill}</td>
+      <td class="px-5 py-2.5 align-top"><div class="flex flex-wrap max-w-xs">${dashChips(u)}</div></td>
+      <td class="px-5 py-2.5 text-xs text-muted-fg font-mono align-top">${(u.created||'').slice(0,19)}</td>
+      <td class="px-5 py-2.5 text-right align-top">${isSelf?'':`<button onclick="delUser('${u.email}')" class="text-xs text-rose-fg hover:underline">Delete</button>`}</td>
+    </tr>`;
+  }).join('');
+  lucide.createIcons();
+}
+async function addUser(){
+  const email = document.getElementById('new-email').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const dashboards = Array.from(document.querySelectorAll('.new-dash:checked')).map(c=>c.value);
+  const s = document.getElementById('add-status');
+  const r = await apiPost('/api/users', {email, password, role, dashboards});
+  if (r.ok){
+    s.innerHTML = '<span class="text-emerald-fg">✓ added</span>';
+    ['new-email','new-password'].forEach(i=>document.getElementById(i).value='');
+    document.querySelectorAll('.new-dash:checked').forEach(c=>c.checked=false);
+    refresh();
+  } else s.innerHTML = '<span class="text-rose-fg">'+(r.error||'error')+'</span>';
+}
+async function delUser(email){
+  if (!confirm('Delete user '+email+'?')) return;
+  await fetch('/api/users/'+encodeURIComponent(email), {method:'DELETE'});
+  refresh();
+}
+async function updateRole(email, role){
+  await fetch('/api/users/'+encodeURIComponent(email), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({role})});
+  toast('Role updated');
+  refresh();
+}
+async function toggleDash(email, id){
+  const u = window._users[email]; if (!u) return;
+  if (u.role === 'admin'){ toast('Admins already have every dashboard', 'error'); return; }
+  const set = new Set(u.dashboards||[]);
+  set.has(id) ? set.delete(id) : set.add(id);
+  const dashboards = Array.from(set);
+  await fetch('/api/users/'+encodeURIComponent(email), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dashboards})});
+  toast(DASH_REG[id].label + (set.has(id)?' access granted':' access removed'));
+  refresh();
+}
+refresh();
+</script>
+{% endblock %}

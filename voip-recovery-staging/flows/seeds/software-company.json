@@ -1,0 +1,77 @@
+{
+  "id": "software-company",
+  "name": "Software Company Agent",
+  "description": "Front-line helpdesk for a software product — triages issues, captures repro steps, escalates bug reports / sales / account issues.",
+  "is_preset": true,
+  "voice": "Kore",
+  "model": "gemini-3.1-flash-live-preview",
+  "language_hint": "en",
+  "greeting_trigger": "The customer has just connected to the helpdesk. Greet them, identify yourself, and ask how you can help today.",
+  "retry_greeting_trigger": "The customer was brought back because the engineer was unavailable. Apologise and take their details for a callback.",
+  "test_mode": true,
+  "test_mode_number": "0779190005",
+  "escalation_timeout_sec": 60,
+  "transfer_rules": [
+    {
+      "category": "bug",
+      "manager_number": "0779190001",
+      "description": "Bug reports / outages / something broken — connect to on-call engineering."
+    },
+    {
+      "category": "sales",
+      "manager_number": "0779190002",
+      "description": "Pricing / upgrades / new licenses — connect to sales."
+    },
+    {
+      "category": "account",
+      "manager_number": "0779190003",
+      "description": "Billing / account / password reset issues — connect to account management."
+    },
+    {
+      "category": "default",
+      "manager_number": "0779190005",
+      "description": "Anything that doesn't match the above — connect to the duty manager."
+    }
+  ],
+  "tools_enabled": [
+    "save_customer_info",
+    "request_human_transfer",
+    "end_call"
+  ],
+  "tools_config": {
+    "save_customer_info": {
+      "fields": [
+        "name",
+        "email",
+        "company",
+        "product",
+        "version",
+        "issue_summary",
+        "repro_steps",
+        "severity"
+      ]
+    }
+  },
+  "system_prompt": "You are Alex, a friendly Tier-1 helpdesk agent for a software product. You speak clear English.\n\n## YOUR JOB\n- Greet the caller professionally and identify what they need.\n- Capture: their name, company, the product they're using, the version, a clear one-line issue summary, repro steps, and severity (blocker / major / minor).\n- Save each fact with save_customer_info as soon as you learn it (silently, while you keep talking).\n- Transfer to the right team when needed.\n\n## TRANSFER RULES\n- Caller reports something is broken, an outage, can't log in, errors → request_human_transfer(category=\"bug\").\n- Caller asks about pricing, plans, upgrades, buying licenses → request_human_transfer(category=\"sales\").\n- Caller has billing / invoice / password reset / account questions → request_human_transfer(category=\"account\").\n- Anything else or unclear → request_human_transfer(category=\"default\").\n\n## STYLE\n- Calm, methodical, empathetic when something's broken.\n- Don't pretend to know the product's internals — gather facts, then transfer.\n- When the caller is satisfied, thank them and call end_call.",
+  "custom_instructions": "",
+  "flow": {
+    "nodes": [
+      {"id": "start", "type": "start", "position": {"x": 50, "y": 200}, "data": {"label": "Start", "greeting_text": "Greet caller professionally, identify yourself, ask how to help."}},
+      {"id": "intent", "type": "intent", "position": {"x": 280, "y": 200}, "data": {"label": "Triage", "description": "Detect: bug report, sales question, account/billing, general."}},
+      {"id": "capture", "type": "tool", "position": {"x": 520, "y": 100}, "data": {"label": "Capture details", "tool_id": "save_customer_info", "arg_template": "Save name, company, product, version, issue_summary, repro_steps, severity."}},
+      {"id": "transfer-bug", "type": "transfer", "position": {"x": 520, "y": 220}, "data": {"label": "Transfer: engineering", "category": "bug"}},
+      {"id": "transfer-sales", "type": "transfer", "position": {"x": 520, "y": 320}, "data": {"label": "Transfer: sales", "category": "sales"}},
+      {"id": "end", "type": "end", "position": {"x": 780, "y": 200}, "data": {"label": "End call", "farewell_text": "Thanks for calling, we'll follow up."}}
+    ],
+    "edges": [
+      {"id": "e1", "source": "start", "target": "intent"},
+      {"id": "e2", "source": "intent", "target": "capture", "label": "gather facts"},
+      {"id": "e3", "source": "intent", "target": "transfer-bug", "label": "broken thing"},
+      {"id": "e4", "source": "intent", "target": "transfer-sales", "label": "wants to buy"},
+      {"id": "e5", "source": "capture", "target": "end"}
+    ],
+    "viewport": {"x": 0, "y": 0, "zoom": 1}
+  },
+  "created_at": "",
+  "updated_at": ""
+}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.label }}{% endblock %}
+{% block page_title %}<span id="page-title-text">{{ meta.label }}</span>{% endblock %}
+{% block page_subtitle %}{{ meta.desc }}{% endblock %}
+
+{% block page_actions %}
+<button onclick="IndustryApp.exportCurrent()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+</button>
+<button id="btn-reset" onclick="IndustryApp.resetData()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors" title="Restore the dummy demo data to its original state">
+  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset demo data
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- demo-data banner -->
+<div id="demo-banner" class="px-4 py-2 rounded-md text-xs bg-amber-bg text-amber-fg border border-amber-fg/20 flex items-center gap-2">
+  <i data-lucide="flask-conical" class="w-3.5 h-3.5 shrink-0"></i>
+  <span>Demo workspace — running on local dummy data (<code>static/data/{{ industry }}.js</code>). No live database connected yet; changes persist in this browser only.</span>
+</div>
+
+<!-- tab bar -->
+<div class="border-b border-border flex items-center gap-1 overflow-x-auto" id="ind-tabs"></div>
+
+<!-- view -->
+<div id="ind-view" class="space-y-6"><div class="text-sm text-muted-fg py-10 text-center">Loading…</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/data/{{ industry }}.js?v=1"></script>
+<script src="/static/industry-engine.js?v=1"></script>
+<script>IndustryApp.boot('{{ industry }}');</script>
+{% endblock %}

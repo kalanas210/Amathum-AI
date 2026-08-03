@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automations — Naxter</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: "class", theme: { extend: {
+      colors: { muted: "var(--muted)", accent: "var(--accent)", line: "var(--panel-border)", panel: "var(--panel-bg)" },
+      fontFamily: { sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"] },
+    } } };
+  </script>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/style.css">
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reactflow@11.11.4/dist/umd/index.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* ============================================================
+       1. DESIGN TOKENS — n8n palette (light default + dark)
+       ============================================================ */
+    :root {
+      --canvas-bg:#F9F9FB;  --grid-dot:#E5E7EB;
+      --panel-bg:#FFFFFF;   --panel-border:#E7E9EE;
+      --text:#222222;       --muted:#6B7280;
+      --accent:#EA4B71;     --accent-hover:#DA3E63;
+      --node-bg:#FFFFFF;    --node-border:#E5E7EB;  --node-border-hover:#C9CED6;
+      --node-shadow:0 1px 3px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.05);
+      --node-shadow-hover:0 2px 6px rgba(0,0,0,.08), 0 10px 24px rgba(0,0,0,.10);
+      --node-title:#18181B; --node-sub:#71717A;
+      --edge:#A3A8B1;       --handle:#B8BDC7;
+      --hover:rgba(0,0,0,.045);
+      --input-bg:#FFFFFF;   --input-border:#D8DCE3;
+      --field-bg:#FFFFFF;   --field-border:#D8DCE3;
+      --code-bg:#F6F7F9;    --scroll:#D6DAE1;   --plus-border:#D8DCE3;
+      /* node function colours (left accent) */
+      --fn-trigger:#8257E6; --fn-logic:#3B82F6; --fn-action:#10B981;
+    }
+    .dark {
+      --canvas-bg:#1E1E21;  --grid-dot:#2D2D30;
+      --panel-bg:#25262B;   --panel-border:#34343A;
+      --text:#F3F4F6;       --muted:#9CA3AF;
+      --accent:#EA4B71;     --accent-hover:#F05C80;
+      --node-bg:#25262B;    --node-border:#3F3F46;  --node-border-hover:#52525B;
+      --node-shadow:0 1px 3px rgba(0,0,0,.25), 0 4px 12px rgba(0,0,0,.30);
+      --node-shadow-hover:0 2px 6px rgba(0,0,0,.35), 0 10px 24px rgba(0,0,0,.45);
+      --node-title:#E5E5E5; --node-sub:#A1A1AA;
+      --edge:#5C6370;       --handle:#6B7280;
+      --hover:rgba(255,255,255,.06);
+      --input-bg:#1E1E21;   --input-border:#3A3A42;
+      --field-bg:#09090B;   --field-border:#3F3F46;
+      --code-bg:#1A1B1F;    --scroll:#3A3A42;   --plus-border:#3F3F46;
+    }
+
+    html, body { height:100%; }
+    body { background:var(--canvas-bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+    ::-webkit-scrollbar { width:9px; height:9px; } ::-webkit-scrollbar-thumb { background:var(--scroll); border-radius:8px; }
+
+    /* ============================================================
+       2. NODES — white cards, soft shadow, 4px function accent
+       ============================================================ */
+    /* vertical stack: transparent wrapper > colored icon block > text below */
+    .n8n-node { display:flex; flex-direction:column; align-items:center; justify-content:center; background:transparent; border:none; }
+    .n8n-block { position:relative; width:56px; height:56px; border-radius:16px; display:grid; place-items:center; flex:0 0 auto;
+      border:1px solid rgba(255,255,255,.10); box-shadow:0 4px 14px rgba(0,0,0,.25);
+      transition:all .2s ease-in-out; cursor:pointer; }                       /* solid colour set per node */
+    .n8n-node:hover .n8n-block { box-shadow:0 8px 22px rgba(0,0,0,.35);
+      transform:scale(1.04); border-color:rgba(255,255,255,.22); }            /* premium micro-interaction */
+    .n8n-block.sel  { box-shadow:0 0 0 2px var(--accent), 0 8px 22px rgba(0,0,0,.30); }
+    .n8n-block.ok   { box-shadow:0 0 0 2px #10B981, 0 4px 14px rgba(0,0,0,.25); }
+    .n8n-block.fail { box-shadow:0 0 0 2px #EF4444, 0 4px 14px rgba(0,0,0,.25); }
+    .n8n-block.skip { opacity:.5; }
+    .n8n-ico  { width:26px; height:26px; }                                    /* pure-white SVG, centered */
+    .n8n-textwrap { margin-top:8px; text-align:center; max-width:120px; overflow-wrap:break-word; word-break:break-word; }
+    .n8n-name { font-size:14px; font-weight:600; color:var(--node-title); line-height:1.25; letter-spacing:-.01em; }
+    .n8n-type { font-size:11px; font-weight:400; color:var(--node-sub); line-height:1.3; margin-top:3px;
+      display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; text-overflow:ellipsis; }
+    .react-flow__node { overflow:visible; }                                   /* don't clip the label / + buttons */
+
+    /* ============================================================
+       3. HANDLES + EDGES
+       ============================================================ */
+    .react-flow__handle { width:10px; height:10px; border-radius:50%; background:var(--handle);
+      border:2px solid var(--node-bg); transition:background .12s; cursor:crosshair; }
+    .react-flow__handle:hover { background:var(--accent); }
+    .react-flow__handle-left { left:-5px; } .react-flow__handle-right { right:-5px; }
+    .react-flow__edge-path { stroke:var(--edge); stroke-width:2; }
+    .react-flow__edge.selected .react-flow__edge-path,
+    .react-flow__edge:hover .react-flow__edge-path { stroke:var(--accent); }
+    .react-flow__connection-path, .react-flow__connectionline path { stroke:var(--accent); stroke-width:2; }
+    .react-flow__node.selected { box-shadow:none; }    /* let our coral border show */
+    .react-flow__attribution { display:none; }
+
+    /* ============================================================
+       4. CANVAS DOT GRID (CSS radial-gradient; panned via JS onMove) + CURSORS
+       ============================================================ */
+    .react-flow__pane {
+      cursor:grab;
+      background-color:var(--canvas-bg);
+      background-image:radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+      background-size:20px 20px;
+      background-position:0 0;
+    }
+    .react-flow__pane.dragging, .react-flow__pane:active { cursor:grabbing; }
+    .react-flow__node { cursor:pointer; }
+
+    .react-flow, .react-flow__renderer { background:var(--canvas-bg); }
+    .react-flow__controls { box-shadow:var(--node-shadow); border-radius:8px; overflow:hidden; border:1px solid var(--panel-border); }
+    .react-flow__controls-button { background:var(--panel-bg); border-bottom:1px solid var(--panel-border); color:var(--text); fill:var(--text); width:30px; height:30px; }
+    .react-flow__controls-button:hover { background:var(--hover); }
+
+    /* the "+" add affordance on a node output */
+    .n8n-stub { position:absolute; right:-30px; height:2px; background:var(--edge); width:22px; transform:translateY(-50%); pointer-events:none; }
+    .n8n-plus { position:absolute; right:-44px; width:22px; height:22px; border-radius:50%; background:var(--canvas-bg);
+      border:1.5px solid var(--plus-border); color:var(--muted); display:grid; place-items:center; cursor:pointer;
+      transform:translateY(-50%); font-size:15px; line-height:0; transition:all .12s; }
+    .n8n-plus:hover { border-color:var(--accent); color:var(--accent); }
+
+    /* ============================================================
+       5. CHROME — toolbar, buttons, inputs, modals
+       ============================================================ */
+    .bar  { background:var(--panel-bg); border-bottom:1px solid var(--panel-border); }
+    .foot { background:var(--panel-bg); border-top:1px solid var(--panel-border); }
+    .btn  { font-size:12px; padding:6px 11px; border-radius:8px; border:1px solid var(--panel-border);
+      background:transparent; color:var(--text); display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+      transition:background .12s, border-color .12s; white-space:nowrap; }
+    .btn:hover { background:var(--hover); }
+    .btn-soft { background:var(--hover); }
+    .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+    .btn-primary:hover { background:var(--accent-hover); }
+    .fab-right { position:fixed; right:48px; top:50%; transform:translateY(-50%); z-index:20;
+      width:48px; height:48px; padding:0; border-radius:50%; display:grid; place-items:center;
+      box-shadow:0 4px 12px rgba(234,75,113,.30); }
+    .fab-right:hover { box-shadow:0 6px 18px rgba(234,75,113,.45); }
+    .inp { width:100%; background:var(--input-bg); border:1px solid var(--input-border); border-radius:8px;
+      padding:7px 10px; font-size:13px; color:var(--text); outline:none; transition:border-color .12s; }
+    .inp:focus { border-color:var(--accent); }
+    .ghost-inp { background:transparent; border:1px solid transparent; border-radius:8px; padding:5px 8px;
+      font-size:13px; font-weight:600; color:var(--text); outline:none; }
+    .ghost-inp:hover { border-color:var(--panel-border); } .ghost-inp:focus { border-color:var(--accent); }
+
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.4); display:grid; place-items:center; z-index:50; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+    .modal-card    { background:var(--panel-bg); border:1px solid var(--panel-border); border-top:1px solid rgba(255,255,255,.1); border-radius:14px; width:430px; max-height:74vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.25); }
+    .modal-card-lg { background:var(--panel-bg); border:1px solid var(--panel-border); border-top:1px solid rgba(255,255,255,.1); border-radius:14px; width:560px; max-height:84vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 70px rgba(0,0,0,.25); }
+    .picker-item { cursor:pointer; } .picker-item:hover { background:var(--hover); }
+    .copybtn:active { transform:scale(.94); }
+    pre.code { background:var(--code-bg); border:1px solid var(--panel-border); border-radius:8px; padding:8px; font-size:11px; overflow-x:auto; max-height:12rem; color:var(--text); }
+
+    /* ============================================================
+       6. NODE SETTINGS SIDEBAR — slides in from the right on dblclick
+       ============================================================ */
+    .node-settings-sidebar {
+      position:fixed; top:0; right:0; height:100vh; width:400px; max-width:92vw; z-index:45;
+      display:flex; flex-direction:column;
+      background:var(--panel-bg); border-left:1px solid var(--node-border);
+      box-shadow:-16px 0 48px rgba(0,0,0,.38);
+      transform:translateX(100%); visibility:hidden;
+      transition:transform .26s cubic-bezier(.4,0,.2,1), visibility .26s linear;
+    }
+    .node-settings-sidebar.open { transform:translateX(0); visibility:visible; }
+
+    /* header — node identity + actions */
+    .nss-head { flex:0 0 auto; display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      padding:16px; border-bottom:1px solid rgba(255,255,255,.05); }
+    .nss-id { display:flex; align-items:center; gap:12px; min-width:0; }
+    .nss-icon { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; flex:0 0 auto;
+      border:1px solid rgba(255,255,255,.12); box-shadow:0 3px 10px rgba(0,0,0,.30); }
+    .nss-icon svg { width:20px; height:20px; color:#fff; }
+    .nss-id-txt { min-width:0; }
+    .nss-title { width:100%; background:transparent; border:1px solid transparent; border-radius:7px; padding:2px 6px;
+      font-size:15px; font-weight:600; letter-spacing:-.01em; color:var(--node-title); outline:none; }
+    .nss-title:hover { border-color:var(--panel-border); }  .nss-title:focus { border-color:var(--accent); }
+    .nss-sub { font-size:12px; color:#A1A1AA; padding:1px 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .nss-actions { display:flex; gap:4px; flex:0 0 auto; }
+    .nss-iconbtn { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; cursor:pointer;
+      color:var(--muted); background:transparent; border:1px solid transparent; transition:background .12s, color .12s; }
+    .nss-iconbtn:hover { background:var(--hover); color:var(--text); }
+    .nss-iconbtn.danger:hover { background:rgba(239,68,68,.12); color:#ef4444; }
+
+    /* body — scrollable settings */
+    .nss-body { flex:1 1 auto; overflow-y:auto; padding:16px; }
+    .nss-label { display:block; font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.045em;
+      color:#A1A1AA; margin-bottom:6px; }
+    .node-settings-sidebar .inp { background:var(--field-bg); border:1px solid var(--field-border); border-radius:8px; }
+    .node-settings-sidebar .inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(234,75,113,.28); }
+    .node-settings-sidebar select.inp { appearance:none; -webkit-appearance:none; padding-right:30px;
+      background-repeat:no-repeat; background-position:right 10px center;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23A1A1AA' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); }
+
+    /* toggle / switch (restyled checkbox) — label left, switch right */
+    .nss-toggle { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; font-size:13px; color:var(--text); }
+    .nss-toggle input[type="checkbox"] { appearance:none; -webkit-appearance:none; position:relative; flex:0 0 auto;
+      width:38px; height:21px; border-radius:999px; background:var(--field-border); cursor:pointer; transition:background .18s; }
+    .nss-toggle input[type="checkbox"]::after { content:""; position:absolute; top:2px; left:2px; width:17px; height:17px;
+      border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.4); transition:transform .18s; }
+    .nss-toggle input[type="checkbox"]:checked { background:var(--accent); }
+    .nss-toggle input[type="checkbox"]:checked::after { transform:translateX(17px); }
+
+    /* footer — fixed actions */
+    .nss-foot { flex:0 0 auto; display:flex; gap:8px; padding:14px 16px;
+      border-top:1px solid rgba(255,255,255,.05); background:var(--panel-bg); }
+    .nss-foot .btn { justify-content:center; padding:9px 14px; }
+    .nss-exec { flex:1 1 auto; }
+  </style>
+</head>
+<body class="h-full">
+  <div class="flex flex-col h-screen">
+
+    <!-- Top bar -->
+    <header class="bar flex items-center gap-2.5 px-4 py-2.5">
+      <i data-lucide="workflow" class="w-5 h-5" style="color:var(--accent)"></i>
+      <select id="wf-select" class="inp text-sm min-w-[170px]" style="width:auto"></select>
+      <input id="wf-name" class="ghost-inp w-52" placeholder="Workflow name">
+      <button id="btn-active" class="btn rounded-full" title="Activate to enable webhook & form triggers">
+        <span id="active-dot" class="w-2 h-2 rounded-full" style="background:#9CA3AF"></span><span id="active-label">Inactive</span>
+      </button>
+      <span id="wf-meta" class="text-xs text-muted"></span>
+      <div class="flex-1"></div>
+      <button id="btn-theme"   class="btn" title="Toggle light / dark"><i data-lucide="moon" class="w-3.5 h-3.5"></i></button>
+      <button id="btn-tidy"    class="btn"><i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>Tidy</button>
+      <button id="btn-new"     class="btn"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button>
+      <button id="btn-history" class="btn"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button>
+      <button id="btn-import"  class="btn"><i data-lucide="upload" class="w-3.5 h-3.5"></i>Import</button>
+      <button id="btn-export"  class="btn"><i data-lucide="download" class="w-3.5 h-3.5"></i>Export</button>
+      <button id="btn-save"    class="btn btn-soft"><i data-lucide="save" class="w-3.5 h-3.5"></i>Save</button>
+      <button id="btn-run"     class="btn btn-primary"><i data-lucide="play" class="w-3.5 h-3.5"></i>Execute Workflow</button>
+      <input id="file-import" type="file" accept="application/json,.json" class="hidden">
+    </header>
+
+    <!-- Canvas -->
+    <main class="flex-1 min-h-0 relative">
+      <div id="canvas" class="absolute inset-0"></div>
+      <div id="canvas-empty" class="absolute inset-0 grid place-items-center text-muted text-sm pointer-events-none px-6 text-center">Loading canvas…</div>
+      <button id="btn-addfirst" class="hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-3.5 rounded-xl border-2 border-dashed text-sm flex items-center gap-2" style="border-color:var(--panel-border); color:var(--muted)">
+        <i data-lucide="plus" class="w-4 h-4"></i> Add first step
+      </button>
+      <button id="btn-addnode" class="btn btn-primary fab-right" title="Add node" aria-label="Add node"><i data-lucide="plus" class="w-5 h-5"></i></button>
+    </main>
+
+    <!-- Run log -->
+    <footer class="foot h-40 shrink-0 overflow-y-auto">
+      <div class="flex items-center gap-2 px-4 py-2 sticky top-0 bar">
+        <i data-lucide="terminal" class="w-4 h-4 text-muted"></i>
+        <span class="text-xs font-medium">Run log</span>
+        <span id="run-status" class="text-xs"></span>
+        <span class="text-[10px] text-muted ml-auto">double-click a node to edit it & see its data</span>
+      </div>
+      <div id="runlog" class="p-3 text-xs text-muted">Press <b>Execute Workflow</b> to run.</div>
+    </footer>
+  </div>
+
+  <!-- Node picker -->
+  <div id="picker-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="px-3 pt-3 pb-2" style="border-bottom:1px solid var(--panel-border)">
+        <div class="flex items-center gap-2 inp" style="padding:6px 10px">
+          <i data-lucide="search" class="w-4 h-4 text-muted"></i>
+          <input id="picker-search" class="bg-transparent text-sm w-full outline-none" placeholder="Search nodes…" autocomplete="off" style="color:var(--text)">
+          <button id="picker-close" class="text-muted hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+      </div>
+      <div id="picker-list" class="overflow-y-auto p-2"></div>
+    </div>
+  </div>
+
+  <!-- Node settings sidebar (slides in from the right on double-click) -->
+  <aside id="node-modal" class="node-settings-sidebar" aria-label="Node settings">
+    <div id="node-modal-head" class="nss-head"></div>
+    <div id="node-modal-body" class="nss-body"></div>
+    <div id="node-modal-foot" class="nss-foot"></div>
+  </aside>
+
+  <!-- History -->
+  <div id="history-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="flex items-center justify-between px-4 py-3" style="border-bottom:1px solid var(--panel-border)">
+        <span class="text-sm font-medium">Version history</span>
+        <button id="history-close" class="text-muted hover:opacity-70"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div id="history-list" class="overflow-y-auto p-2 text-sm"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden fixed bottom-4 right-4 px-3 py-2 rounded-md text-sm shadow-lg z-[60]"></div>
+
+  <script src="/static/automations.js"></script>
+</body>
+</html>

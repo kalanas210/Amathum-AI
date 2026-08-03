@@ -1,0 +1,10 @@
+{
+  "_comment": "Dummy reservations reference data (restaurant / dining). Shared by the AI voice agent (book_reservation tool in bridge.ts) and the Reservations dashboard booking form. Real reservations captured from calls live under /var/lib/sampath-ai/bookings/reservations/reservations/.",
+  "currency": "Rs",
+  "branches": ["Colombo", "Mount Lavinia", "Negombo"],
+  "areas": ["Indoor (A/C)", "Garden", "Rooftop", "Private Room"],
+  "timeSlots": ["12:00", "12:30", "13:00", "13:30", "14:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
+  "maxPartySize": 20,
+  "depositPerGuest": 1500,
+  "openHours": "Lunch 12:00–15:00, Dinner 18:00–23:00 daily"
+}

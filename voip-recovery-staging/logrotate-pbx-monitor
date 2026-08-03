@@ -1,0 +1,10 @@
+/var/log/pbx-monitor/probe.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su asterisk asterisk
+}

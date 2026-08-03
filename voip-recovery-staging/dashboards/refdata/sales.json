@@ -1,0 +1,22 @@
+{
+  "_comment": "Product catalog for the Naxter storefront (shop.easmoney.me), the sales voice agent (find_product / place_order tools), and the Sales dashboard. 'stock' is the initial inventory; AVAILABLE stock is computed live as stock minus quantities in non-cancelled orders, so the shop + agent + dashboard all see real-time availability without mutating this file. Edit freely.",
+  "currency": "Rs",
+  "store_name": "Ryzera Store",
+  "store_tagline": "Smart gear, delivered island-wide.",
+  "confirm_test_number": "0729836992",
+  "_confirm_test_number_note": "SAFETY: while testing outbound AI confirm-calls, set this to your own mobile so EVERY confirm-call rings that number instead of real customers. Clear it ('') to call real buyers.",
+  "products": [
+    { "sku": "EAR1", "name": "Wireless Earbuds Pro", "price": 8900, "stock": 24, "category": "Audio", "emoji": "🎧", "blurb": "Active noise cancellation, 30h battery, USB-C fast charge." },
+    { "sku": "WAT1", "name": "Smart Watch X2", "price": 14500, "stock": 12, "category": "Wearables", "emoji": "⌚", "blurb": "AMOLED display, heart-rate & SpO2, 7-day battery." },
+    { "sku": "SPK1", "name": "Bluetooth Speaker", "price": 6700, "stock": 0, "category": "Audio", "emoji": "🔊", "blurb": "360° sound, IPX7 waterproof, 20h playtime." },
+    { "sku": "FRY1", "name": "Air Fryer 5L", "price": 22900, "stock": 8, "category": "Kitchen", "emoji": "🍳", "blurb": "Oil-free cooking, digital presets, family size." },
+    { "sku": "LMP1", "name": "LED Desk Lamp", "price": 4500, "stock": 30, "category": "Home", "emoji": "💡", "blurb": "Adjustable warmth, touch dimming, USB charging port." },
+    { "sku": "YOG1", "name": "Yoga Mat Premium", "price": 3200, "stock": 18, "category": "Fitness", "emoji": "🧘", "blurb": "6mm non-slip TPE, eco-friendly, carry strap included." },
+    { "sku": "SHO1", "name": "Running Shoes", "price": 11900, "stock": 6, "category": "Fitness", "emoji": "👟", "blurb": "Lightweight knit, responsive cushioning, breathable." },
+    { "sku": "COF1", "name": "Coffee Maker", "price": 18500, "stock": 5, "category": "Kitchen", "emoji": "☕", "blurb": "12-cup drip brewer, programmable timer, keep-warm." },
+    { "sku": "PWR1", "name": "Power Bank 20000mAh", "price": 4900, "stock": 40, "category": "Accessories", "emoji": "🔋", "blurb": "65W PD fast charge, dual USB-C, charges a laptop." },
+    { "sku": "SKN1", "name": "Skincare Bundle", "price": 5400, "stock": 15, "category": "Beauty", "emoji": "🧴", "blurb": "Cleanser, serum & moisturiser — all skin types." },
+    { "sku": "CAM1", "name": "Action Camera 4K", "price": 27500, "stock": 3, "category": "Electronics", "emoji": "📷", "blurb": "4K60 video, waterproof case, image stabilisation." },
+    { "sku": "BAG1", "name": "Laptop Backpack", "price": 6900, "stock": 20, "category": "Accessories", "emoji": "🎒", "blurb": "Fits 16\" laptop, USB pass-through, water-resistant." }
+  ]
+}

@@ -1,0 +1,67 @@
+# ============================================================
+#  Ryzera — root ignore rules
+#  IMPORTANT: this file is the last line of defence for secrets.
+#  sampath/.gitignore does NOT cover .env files, so we do it here.
+# ============================================================
+
+# ---- secrets (never commit) ----
+.env
+.env.*
+!.env.example
+!.env.*.example
+instance/
+ami.json
+auth.json
+aws.json
+
+# ---- dependencies ----
+node_modules/
+.pnp
+.pnp.*
+.venv/
+venv/
+
+# ---- build output ----
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- runtime data (workflows, runs, sessions, bookings, caller memory) ----
+data/
+automation/data/
+automation/web/data/
+sampath/memory/
+*.jsonl
+
+# ---- backups produced by the idempotent installers ----
+*.bak
+*.bak-*
+*.bak_*
+
+# ---- handoff archives / duplicate copies (not part of the submission) ----
+sampathAIV2/
+sampathCallApp/
+*.zip
+
+# ---- logs & scratch ----
+*.log
+server.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+coverage/
+
+# ---- os / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+*.pem

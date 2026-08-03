@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ cfg.title or 'Form' }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body{background:#0b0f17;color:#e5e7eb;font-family:Inter,ui-sans-serif,system-ui,sans-serif;}</style>
+</head>
+<body class="min-h-screen grid place-items-center p-4">
+  <div class="w-full max-w-md bg-[#111726] border border-[#1f2937] rounded-2xl p-6 shadow-xl">
+    {% if done %}
+      <div class="text-center py-6">
+        <div class="text-4xl mb-3">✅</div>
+        <div class="text-lg font-medium">{{ done }}</div>
+        <a href="" class="text-xs text-indigo-400 hover:underline mt-4 inline-block">Submit another response</a>
+      </div>
+    {% else %}
+      <h1 class="text-xl font-semibold mb-1">{{ cfg.title or 'Form' }}</h1>
+      {% if cfg.description %}<p class="text-sm text-slate-400 mb-4">{{ cfg.description }}</p>{% endif %}
+      <form method="POST" class="space-y-4 mt-4">
+        {% for f in cfg.fields or [] %}
+          <label class="block">
+            <span class="block text-sm mb-1">{{ f.label }}{% if f.required %} <span class="text-rose-400">*</span>{% endif %}</span>
+            {% if f.type == 'textarea' %}
+              <textarea name="{{ f.label }}" rows="3" {% if f.required %}required{% endif %}
+                class="w-full bg-[#0b0f17] border border-[#283449] rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none"></textarea>
+            {% elif f.type == 'select' %}
+              <select name="{{ f.label }}" {% if f.required %}required{% endif %}
+                class="w-full bg-[#0b0f17] border border-[#283449] rounded-lg px-3 py-2 text-sm">
+                {% for o in f.options or [] %}<option>{{ o }}</option>{% endfor %}
+              </select>
+            {% else %}
+              <input name="{{ f.label }}" type="{{ f.type or 'text' }}" {% if f.required %}required{% endif %}
+                class="w-full bg-[#0b0f17] border border-[#283449] rounded-lg px-3 py-2 text-sm focus:border-indigo-500 outline-none">
+            {% endif %}
+          </label>
+        {% endfor %}
+        <button class="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">Submit</button>
+      </form>
+    {% endif %}
+    <div class="text-[10px] text-slate-600 mt-5 text-center">powered by Naxter Automations</div>
+  </div>
+</body>
+</html>
