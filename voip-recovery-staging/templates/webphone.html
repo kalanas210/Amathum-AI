@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Web phone{% endblock %}
+{% block page_title %}Web phone{% endblock %}
+{% block page_subtitle %}Browser-based softphone (WebRTC SIP) registered as extension 1010{% endblock %}
+
+{% block content %}
+<div class="grid lg:grid-cols-2 gap-6">
+
+  <div class="space-y-4">
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border">
+        <h3 class="text-sm font-semibold text-fg">Connection</h3>
+      </div>
+      <div class="p-5 space-y-4 text-sm">
+        <div class="flex items-center gap-3 p-3 rounded-lg border border-border" id="reg-status">
+          <div class="w-2.5 h-2.5 rounded-full bg-muted-fg animate-pulse" id="reg-dot"></div>
+          <div class="flex-1">
+            <div class="font-medium text-fg" id="reg-text">Not connected</div>
+            <div class="text-xs text-muted-fg" id="reg-detail">Choose a transport URL and click Connect</div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1.5">WebSocket transport</label>
+          <select id="ws-url" class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card text-fg font-mono"></select>
+          <p class="text-[11px] text-muted-fg mt-2" id="ws-note"></p>
+        </div>
+        <div class="flex gap-2">
+          <button id="connect-btn" onclick="connectSIP()" class="px-4 py-2 bg-emerald-fg text-white text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <i data-lucide="link" class="w-4 h-4"></i> Connect
+          </button>
+          <button id="disconnect-btn" onclick="disconnectSIP()" disabled class="px-4 py-2 border border-border bg-card text-fg rounded-md text-sm flex items-center gap-2 disabled:opacity-50 hover:bg-card-hover transition-colors">
+            <i data-lucide="link-2-off" class="w-4 h-4"></i> Disconnect
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Dial pad</h3></div>
+      <div class="p-5">
+        <input id="dial-number" type="tel" placeholder="0779190005 or extension 1001"
+          class="w-full px-3 py-3 text-lg font-mono border border-border rounded-md bg-card text-fg text-center tracking-wider mb-3">
+        <div class="grid grid-cols-3 gap-2">
+          {% for d in '1','2','3','4','5','6','7','8','9','*','0','#' %}
+          <button onclick="pressKey('{{ d }}')" class="py-3 border border-border bg-card text-fg rounded-md text-lg font-medium hover:bg-card-hover active:bg-accent transition-colors">{{ d }}</button>
+          {% endfor %}
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <button id="call-btn" onclick="placeCall()" disabled class="py-2.5 bg-emerald-fg text-white text-sm font-semibold rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+            <i data-lucide="phone" class="w-4 h-4"></i> Call
+          </button>
+          <button id="hangup-btn" onclick="hangup()" disabled class="py-2.5 bg-rose-fg text-white text-sm font-semibold rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+            <i data-lucide="phone-off" class="w-4 h-4"></i> Hang up
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="space-y-4">
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-fg">Active call</h3>
+        <div id="call-state" class="text-xs text-muted-fg">Idle</div>
+      </div>
+      <div class="p-5">
+        <div id="call-display" class="text-center py-8">
+          <i data-lucide="phone" class="w-12 h-12 text-muted-fg mx-auto mb-3"></i>
+          <div class="text-sm text-muted-fg">No active call</div>
+        </div>
+        <audio id="remote-audio" autoplay></audio>
+      </div>
+    </div>
+
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">SIP events</h3></div>
+      <pre id="sip-events" class="term m-4 max-h-72 overflow-y-auto">(no events yet)</pre>
+    </div>
+
+    <div class="border border-amber-fg/30 bg-amber-bg text-amber-fg rounded-xl p-4 text-xs">
+      <div class="font-semibold mb-1 flex items-center gap-1.5"><i data-lucide="info" class="w-3.5 h-3.5"></i> About this softphone</div>
+      <p>Uses JsSIP → WebSocket → Asterisk 8088 → SIP endpoint <code>1010</code> with WebRTC media (DTLS-SRTP, ICE). Browser will ask for microphone permission on first connect — grant it for audio.</p>
+    </div>
+
+    <div class="border border-sky-fg/30 bg-sky-bg text-sky-fg rounded-xl p-4 text-xs">
+      <div class="font-semibold mb-1 flex items-center gap-1.5"><i data-lucide="lock" class="w-3.5 h-3.5"></i> Use HTTPS for best results</div>
+      <p>If your browser shows "Not secure", navigate explicitly to <code>https://monitor.easmoney.me/webphone</code>. nginx + Cloudflare Tunnel serve TLS; HTTP works but browsers prefer secure context for microphone access.</p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/jssip.min.js"></script>
+<script>
+let ua = null, session = null, config = null;
+function log(msg, kind=''){
+  const el = document.getElementById('sip-events');
+  const ts = fmtTime(new Date());
+  const color = {ok:'#34d399', err:'#fb7185', info:'#38bdf8'}[kind] || '';
+  const html = color ? `<span style="color:${color}">[${ts}] ${msg}</span>` : `[${ts}] ${msg}`;
+  if (el.textContent === '(no events yet)') el.innerHTML = '';
+  el.innerHTML = html + '\n' + el.innerHTML;
+}
+function setRegStatus(state, detail){
+  const dot = document.getElementById('reg-dot');
+  const txt = document.getElementById('reg-text');
+  const det = document.getElementById('reg-detail');
+  const styles = {
+    ok:      {dot:'bg-emerald-fg ring-2 ring-emerald-fg/30', text:'Connected & registered'},
+    err:     {dot:'bg-rose-fg ring-2 ring-rose-fg/30', text:'Disconnected (error)'},
+    pending: {dot:'bg-amber-fg animate-pulse', text:'Connecting…'},
+    idle:    {dot:'bg-muted-fg', text:'Not connected'},
+  };
+  const s = styles[state] || styles.idle;
+  dot.className = `w-2.5 h-2.5 rounded-full ${s.dot}`;
+  txt.textContent = s.text;
+  det.textContent = detail || '';
+}
+function setCallControls(canCall, canHangup){
+  document.getElementById('call-btn').disabled = !canCall;
+  document.getElementById('hangup-btn').disabled = !canHangup;
+}
+function pressKey(d){
+  const inp = document.getElementById('dial-number');
+  inp.value += d;
+  if (session && session.isEstablished && session.isEstablished()) session.sendDTMF(d);
+}
+async function loadConfig(){
+  config = await apiGet('/api/webphone-config');
+  const sel = document.getElementById('ws-url');
+  sel.innerHTML = config.ws_urls.map((u, i) =>
+    `<option value="${u.url}" data-note="${u.note}" ${i===0?'selected':''}>${u.label}  —  ${u.url}</option>`
+  ).join('');
+  sel.addEventListener('change', () => {
+    const opt = sel.options[sel.selectedIndex];
+    document.getElementById('ws-note').textContent = opt.dataset.note || '';
+  });
+  document.getElementById('ws-note').textContent = sel.options[0]?.dataset.note || '';
+}
+loadConfig();
+
+function connectSIP(){
+  if (ua) return;
+  const wsUrl = document.getElementById('ws-url').value;
+  setRegStatus('pending', wsUrl);
+  log('Connecting to ' + wsUrl, 'info');
+  try {
+    const socket = new JsSIP.WebSocketInterface(wsUrl);
+    ua = new JsSIP.UA({
+      sockets: [socket],
+      uri: config.sip_uri,
+      password: config.password,
+      register: true,
+      session_timers: false,
+    });
+    ua.on('connected', () => log('WebSocket connected', 'ok'));
+    ua.on('disconnected', e => { log('WebSocket disconnected: ' + (e.code||''), 'err'); setRegStatus('err', e.code? `Code ${e.code}`: 'closed'); });
+    ua.on('registered', () => { log('SIP registered as 1010', 'ok'); setRegStatus('ok', config.sip_uri); setCallControls(true, false); });
+    ua.on('unregistered', () => { log('SIP unregistered', 'info'); setRegStatus('idle', ''); setCallControls(false, false); });
+    ua.on('registrationFailed', e => { log('Registration failed: ' + (e.cause||''), 'err'); setRegStatus('err', e.cause||''); });
+    ua.on('newRTCSession', e => {
+      session = e.session;
+      const isInbound = session.direction === 'incoming';
+      const peer = session.remote_identity.uri.user;
+      log(`${isInbound?'Incoming':'Outgoing'} call: ${peer}`, 'info');
+      session.on('peerconnection', evt => {
+        evt.peerconnection.addEventListener('track', t => {
+          document.getElementById('remote-audio').srcObject = t.streams[0];
+        });
+      });
+      session.on('progress', () => { document.getElementById('call-state').textContent = 'Ringing'; updateCallDisplay(peer, 'Ringing…'); });
+      session.on('accepted', () => { document.getElementById('call-state').textContent = 'In call'; updateCallDisplay(peer, 'Connected'); });
+      session.on('confirmed', () => { document.getElementById('call-state').textContent = 'In call'; });
+      session.on('ended', () => { log('Call ended', 'info'); document.getElementById('call-state').textContent = 'Idle'; clearCallDisplay(); session = null; setCallControls(true, false); });
+      session.on('failed', e => { log('Call failed: ' + (e.cause||''), 'err'); document.getElementById('call-state').textContent = 'Idle'; clearCallDisplay(); session = null; setCallControls(true, false); });
+      if (isInbound) {
+        updateCallDisplay(peer, 'Incoming...');
+        if (confirm('Incoming call from ' + peer + '. Answer?')) session.answer({mediaConstraints:{audio:true,video:false}});
+        else session.terminate();
+      }
+      setCallControls(false, true);
+    });
+    ua.start();
+    document.getElementById('connect-btn').disabled = true;
+    document.getElementById('disconnect-btn').disabled = false;
+  } catch (e) {
+    log('Error: ' + e.message, 'err');
+    setRegStatus('err', e.message);
+  }
+}
+function disconnectSIP(){
+  if (session) session.terminate();
+  if (ua) { ua.stop(); ua = null; }
+  setRegStatus('idle','');
+  setCallControls(false, false);
+  document.getElementById('connect-btn').disabled = false;
+  document.getElementById('disconnect-btn').disabled = true;
+  clearCallDisplay();
+}
+async function placeCall(){
+  const n = document.getElementById('dial-number').value.trim();
+  if (!n) { toast('Enter a number', 'error'); return; }
+  if (!ua || !ua.isRegistered()) { toast('Not registered', 'error'); return; }
+  const target = `sip:${n}@${config.realm}`;
+  log('Dialing ' + target, 'info');
+  try {
+    session = ua.call(target, {
+      mediaConstraints: {audio:true, video:false},
+      pcConfig: {iceServers:[{urls:'stun:stun.l.google.com:19302'}]},
+    });
+    setCallControls(false, true);
+  } catch (e) {
+    log('Call error: ' + e.message, 'err');
+  }
+}
+function hangup(){ if (session) session.terminate(); }
+function updateCallDisplay(peer, state){
+  document.getElementById('call-display').innerHTML = `
+    <i data-lucide="phone-call" class="w-12 h-12 text-emerald-fg mx-auto mb-3 animate-pulse"></i>
+    <div class="text-lg font-mono text-fg">${peer}</div>
+    <div class="text-sm text-muted-fg mt-1">${state}</div>`;
+  lucide.createIcons();
+}
+function clearCallDisplay(){
+  document.getElementById('call-display').innerHTML = `
+    <i data-lucide="phone" class="w-12 h-12 text-muted-fg mx-auto mb-3"></i>
+    <div class="text-sm text-muted-fg">No active call</div>`;
+  lucide.createIcons();
+}
+</script>
+{% endblock %}

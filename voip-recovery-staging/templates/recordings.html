@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Recordings{% endblock %}
+{% block page_title %}Call recordings{% endblock %}
+{% block page_subtitle %}Every call (broadcast, IVR, soft-bridged) is auto-recorded to /var/spool/asterisk/recordings/{% endblock %}
+
+{% block page_actions %}
+<button onclick="refresh()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5">
+  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">Total recordings</div>
+    <div class="mt-3 text-xl font-semibold text-fg" id="stat-count">—</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">Total size</div>
+    <div class="mt-3 text-xl font-semibold text-fg" id="stat-size">—</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">Total duration</div>
+    <div class="mt-3 text-xl font-semibold text-fg" id="stat-duration">—</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">Storage path</div>
+    <div class="mt-3 text-xs font-mono text-fg">/var/spool/asterisk/recordings/</div>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border flex flex-wrap items-center justify-between gap-3">
+    <h3 class="text-sm font-semibold text-fg">All recordings</h3>
+    <div class="flex items-center gap-2">
+      <div class="relative">
+        <i data-lucide="search" class="w-3.5 h-3.5 text-muted-fg absolute left-2.5 top-1/2 -translate-y-1/2"></i>
+        <input id="filter" placeholder="Filter by number..." class="text-xs border border-border rounded-md pl-7 pr-2.5 py-1.5 w-48">
+      </div>
+    </div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-[11px] text-muted-fg uppercase tracking-wider">
+          <th class="text-left px-5 py-2.5 font-medium">When</th>
+          <th class="text-left px-5 py-2.5 font-medium">From</th>
+          <th class="text-left px-5 py-2.5 font-medium">To</th>
+          <th class="text-left px-5 py-2.5 font-medium">Duration</th>
+          <th class="text-left px-5 py-2.5 font-medium">Size</th>
+          <th class="text-left px-5 py-2.5 font-medium">Listen</th>
+          <th class="text-right px-5 py-2.5 font-medium">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="recs-tbody" class="text-fg">
+        <tr><td colspan="7" class="px-5 py-8 text-center text-muted-fg text-sm">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rawRecs = [];
+function render(){
+  const q = document.getElementById('filter').value.toLowerCase();
+  const list = rawRecs.filter(r => !q || (r.from+r.to+r.name).toLowerCase().includes(q));
+
+  document.getElementById('recs-tbody').innerHTML = list.length
+    ? list.map(r => `<tr class="border-t border-border">
+        <td class="px-5 py-2.5 text-xs text-muted-fg font-mono whitespace-nowrap">${r.date} ${r.time}</td>
+        <td class="px-5 py-2.5"><code>${r.from}</code></td>
+        <td class="px-5 py-2.5"><code>${r.to}</code></td>
+        <td class="px-5 py-2.5 text-xs">${r.duration_s}s</td>
+        <td class="px-5 py-2.5 text-xs">${fmtBytes(r.size)}</td>
+        <td class="px-5 py-2.5">
+          <audio controls preload="none" src="/api/recordings/${encodeURIComponent(r.name)}/audio" class="h-8" style="max-width:260px"></audio>
+        </td>
+        <td class="px-5 py-2.5 text-right whitespace-nowrap">
+          <a href="/api/recordings/${encodeURIComponent(r.name)}/download" class="text-xs text-fg hover:underline mr-3">Download</a>
+          {% if 'admin' in role_perms %}
+          <button onclick="del('${r.name}')" class="text-xs text-rose-fg hover:underline">Delete</button>
+          {% endif %}
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="px-5 py-10 text-center text-muted-fg text-sm">No recordings yet. Place a call from the Make Call or Broadcast page — it will be recorded automatically.</td></tr>';
+}
+
+async function refresh(){
+  setUpdatedAt();
+  rawRecs = await apiGet('/api/recordings');
+  document.getElementById('stat-count').textContent = rawRecs.length;
+  const totalBytes = rawRecs.reduce((a,r)=>a+r.size,0);
+  const totalDur = rawRecs.reduce((a,r)=>a+r.duration_s,0);
+  document.getElementById('stat-size').textContent = fmtBytes(totalBytes);
+  document.getElementById('stat-duration').textContent = Math.floor(totalDur/60) + 'm ' + Math.round(totalDur%60) + 's';
+  render();
+  lucide.createIcons();
+}
+
+async function del(name){
+  if (!confirm('Delete recording '+name+'?')) return;
+  const r = await fetch('/api/recordings/'+encodeURIComponent(name), {method:'DELETE'});
+  if (r.ok) { toast('Deleted'); refresh(); }
+  else toast('Failed to delete', 'error');
+}
+
+document.getElementById('filter').addEventListener('input', render);
+refresh();
+setInterval(refresh, 10000);
+</script>
+{% endblock %}

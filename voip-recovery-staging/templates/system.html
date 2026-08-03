@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}System{% endblock %}
+{% block page_title %}System{% endblock %}
+{% block page_subtitle %}Service controls and infrastructure details{% endblock %}
+
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4">
+  <div class="border border-border rounded-xl bg-card p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <i data-lucide="refresh-cw" class="w-4 h-4 text-muted-fg"></i>
+      <h3 class="text-sm font-semibold text-fg">Asterisk controls</h3>
+    </div>
+    <p class="text-xs text-muted-fg mb-4">Reload configs without dropping calls, or full restart if needed.</p>
+    <div class="space-y-2">
+      {% if 'config' in role_perms %}
+      <button onclick="apiPost('/api/reload/dialplan').then(j=>toast('Dialplan reloaded'))" class="w-full text-sm px-3 py-2 border border-border bg-card text-fg rounded-md hover:bg-card-hover text-left flex items-center gap-2 transition-colors">
+        <i data-lucide="git-branch" class="w-3.5 h-3.5 text-muted-fg"></i> Reload dialplan
+      </button>
+      <button onclick="apiPost('/api/reload/pjsip').then(j=>toast('PJSIP reloaded'))" class="w-full text-sm px-3 py-2 border border-border bg-card text-fg rounded-md hover:bg-card-hover text-left flex items-center gap-2 transition-colors">
+        <i data-lucide="file-code-2" class="w-3.5 h-3.5 text-muted-fg"></i> Reload PJSIP module
+      </button>
+      <button onclick="apiPost('/api/reload/all').then(j=>toast('Core reloaded'))" class="w-full text-sm px-3 py-2 border border-border bg-card text-fg rounded-md hover:bg-card-hover text-left flex items-center gap-2 transition-colors">
+        <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-muted-fg"></i> Reload all modules
+      </button>
+      {% endif %}
+      {% if 'call' in role_perms %}
+      <button onclick="if(confirm('Hang up ALL active channels?\n\nThis drops every call in progress on the PBX, including live AI agent calls with real customers.')) apiPost('/api/hangup-all').then(j=>toast('Hangup signal sent'))" class="w-full text-sm px-3 py-2 border border-amber-fg/30 bg-amber-bg text-amber-fg rounded-md hover:opacity-80 text-left flex items-center gap-2 transition-opacity">
+        <i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Hang up all calls
+      </button>
+      {% endif %}
+      {% if 'admin' in role_perms %}
+      <button onclick="if(confirm('Full restart will drop active calls. Continue?'))apiPost('/api/restart-asterisk').then(j=>toast('Asterisk restarted'))" class="w-full text-sm px-3 py-2 border border-rose-fg/30 bg-rose-bg text-rose-fg rounded-md hover:opacity-80 text-left flex items-center gap-2 transition-opacity">
+        <i data-lucide="power" class="w-3.5 h-3.5"></i> Restart Asterisk
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="border border-border rounded-xl bg-card p-5 md:col-span-2">
+    <div class="flex items-center gap-2 mb-3">
+      <i data-lucide="activity" class="w-4 h-4 text-muted-fg"></i>
+      <h3 class="text-sm font-semibold text-fg">Service health</h3>
+    </div>
+    <div id="services-grid" class="grid grid-cols-2 md:grid-cols-3 gap-2.5">Loading…</div>
+    <div class="mt-5 pt-4 border-t border-border">
+      <h4 class="text-xs font-medium text-muted-fg uppercase tracking-wider mb-3">System resources</h4>
+      <dl id="sysinfo" class="text-sm grid grid-cols-2 gap-x-6 gap-y-2"></dl>
+    </div>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card p-5">
+  <h3 class="text-sm font-semibold text-fg mb-3">Infrastructure</h3>
+  <dl class="text-sm grid md:grid-cols-2 gap-x-8 gap-y-2.5">
+    <div class="flex"><dt class="w-44 text-muted-fg">Host</dt><dd class="text-fg"><code>i7-4790</code> · Ubuntu 26.04 LTS</dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">LAN IP</dt><dd class="text-fg"><code>192.168.1.132/24</code></dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">Tailscale</dt><dd class="text-fg"><code>100.68.210.114</code></dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">PABX IP (claimed)</dt><dd class="text-fg"><code>192.168.1.43</code> alias</dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">Default gateway</dt><dd class="text-fg"><code>192.168.1.1</code></dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">SBC route</dt><dd class="text-fg font-mono text-xs">10.10.10.0/24 via 192.168.1.254 src 192.168.1.43</dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">Asterisk</dt><dd class="text-fg">22.5.2 with PJSIP</dd></div>
+    <div class="flex"><dt class="w-44 text-muted-fg">Public ingress</dt><dd class="text-fg">Cloudflare Tunnel only (no open ports)</dd></div>
+  </dl>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refresh(){
+  setUpdatedAt();
+  const d = await apiGet('/api/overview');
+  document.getElementById('services-grid').innerHTML = Object.entries(d.services).map(([n,s])=>{
+    const ok=s==='active';
+    return `<div class="flex items-center gap-2.5 px-3 py-2.5 rounded-md border border-border ${ok?'bg-emerald-bg/50':'bg-rose-bg/50'}">
+      <div class="w-2 h-2 rounded-full ${ok?'bg-emerald-fg':'bg-rose-fg'} ring-2 ring-${ok?'emerald':'rose'}-fg/20"></div>
+      <div class="flex-1 min-w-0"><div class="text-xs font-medium truncate text-fg">${n}</div>
+      <div class="text-[11px] ${ok?'text-emerald-fg':'text-rose-fg'}">${s}</div></div></div>`;
+  }).join('');
+  const s = d.system;
+  if (!s.error) document.getElementById('sysinfo').innerHTML = `
+    <div class="flex"><dt class="w-32 text-muted-fg text-xs">CPU load</dt><dd class="font-medium font-mono text-fg">${s.load.join(' / ')}</dd></div>
+    <div class="flex"><dt class="w-32 text-muted-fg text-xs">Memory</dt><dd class="text-fg">${s.mem_used_gb} / ${s.mem_total_gb} GB · ${s.mem_pct}%</dd></div>
+    <div class="flex"><dt class="w-32 text-muted-fg text-xs">Disk (/)</dt><dd class="text-fg">${s.disk_used_gb} / ${s.disk_total_gb} GB · ${s.disk_pct}</dd></div>
+    <div class="flex"><dt class="w-32 text-muted-fg text-xs">Host uptime</dt><dd class="text-fg">${s.host_uptime_h}</dd></div>
+  `;
+  lucide.createIcons();
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+{% endblock %}

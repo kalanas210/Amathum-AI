@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Voicemail{% endblock %}
+{% block page_title %}Voicemail{% endblock %}
+{% block page_subtitle %}Messages left when softphones (1001/1002/1010) don't answer within 30 seconds{% endblock %}
+
+{% block content %}
+<div id="boxes" class="space-y-6">
+  <div class="border border-border rounded-xl bg-card p-8 text-center text-sm text-muted-fg">Loading mailboxes…</div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden max-w-2xl">
+  <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Access from a softphone</h3></div>
+  <div class="p-5 text-sm space-y-3">
+    <p class="text-muted-fg">Dial these short codes from extensions 1001, 1002, or 1010:</p>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="border border-border rounded-lg p-3 bg-bg">
+        <code class="text-base font-semibold">*97</code>
+        <div class="text-xs text-muted-fg mt-1">Check your own mailbox (uses caller ID)</div>
+      </div>
+      <div class="border border-border rounded-lg p-3 bg-bg">
+        <code class="text-base font-semibold">*98</code>
+        <div class="text-xs text-muted-fg mt-1">Log in to any mailbox (prompts for box + PIN)</div>
+      </div>
+    </div>
+    <p class="text-[11px] text-muted-fg pt-2 border-t border-border">Default PIN for mailboxes 1001 and 1002 is <code>1234</code>. Recommend changing immediately by dialing <code>*97</code> → option 5.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refresh(){
+  setUpdatedAt();
+  const boxes = await apiGet('/api/voicemail');
+  document.getElementById('boxes').innerHTML = boxes.length
+    ? boxes.map(b => `
+      <div class="border border-border rounded-xl bg-card overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <h3 class="text-sm font-semibold text-fg">Mailbox <code>${b.box}</code></h3>
+            ${badge(b.new_count + ' new', b.new_count > 0 ? 'emerald' : 'muted')}
+            ${badge(b.old_count + ' old', 'muted')}
+          </div>
+        </div>
+        ${renderFolder(b.box, 'INBOX', b.inbox)}
+        ${b.old.length ? renderFolder(b.box, 'Old', b.old) : ''}
+      </div>`).join('')
+    : '<div class="border border-border rounded-xl bg-card p-10 text-center"><i data-lucide="voicemail" class="w-10 h-10 text-muted-fg mx-auto mb-3"></i><div class="text-sm font-medium text-fg">No voicemail boxes configured</div><div class="text-xs text-muted-fg mt-1">Run <code>asterisk -rx "voicemail show users"</code> to verify</div></div>';
+  lucide.createIcons();
+}
+
+function renderFolder(box, name, msgs){
+  if (!msgs.length) return `<div class="px-5 py-4 text-xs text-muted-fg">No ${name === 'INBOX' ? 'new' : 'old'} messages</div>`;
+  return `
+    <div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead class="bg-muted/50"><tr class="text-[11px] text-muted-fg uppercase tracking-wider">
+        <th class="text-left px-5 py-2.5 font-medium">${name === 'INBOX' ? 'New' : 'Old'} #</th>
+        <th class="text-left px-5 py-2.5 font-medium">From</th>
+        <th class="text-left px-5 py-2.5 font-medium">When</th>
+        <th class="text-left px-5 py-2.5 font-medium">Duration</th>
+        <th class="text-left px-5 py-2.5 font-medium">Listen</th>
+        <th class="text-right px-5 py-2.5 font-medium">Actions</th>
+      </tr></thead>
+      <tbody class="text-fg">${msgs.map(m=>`<tr class="border-t border-border">
+        <td class="px-5 py-2.5 text-xs font-mono">${m.num}</td>
+        <td class="px-5 py-2.5"><code>${m.callerid}</code></td>
+        <td class="px-5 py-2.5 text-xs text-muted-fg font-mono">${m.origtime}</td>
+        <td class="px-5 py-2.5 text-xs text-fg">${m.duration}s</td>
+        <td class="px-5 py-2.5">${m.wav_exists ? `<audio controls preload="none" src="/api/voicemail/${box}/${name}/${m.num}/audio" class="h-8" style="max-width:220px"></audio>` : '<span class="text-muted-fg text-xs">no WAV</span>'}</td>
+        <td class="px-5 py-2.5 text-right"><button onclick="del('${box}','${name}','${m.num}')" class="text-xs text-rose-fg hover:underline">Delete</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+async function del(box, folder, num){
+  if (!confirm(`Delete message #${num}?`)) return;
+  await fetch(`/api/voicemail/${box}/${folder}/${num}`, {method:'DELETE'});
+  refresh();
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+{% endblock %}

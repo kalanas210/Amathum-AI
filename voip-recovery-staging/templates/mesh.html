@@ -1,0 +1,635 @@
+{% extends "base.html" %}
+{% block title %}PBX Mesh{% endblock %}
+{% block page_title %}PBX Mesh{% endblock %}
+{% block page_subtitle %}Inter-PBX trunks and the inbound menu that routes callers between them{% endblock %}
+
+{% block page_actions %}
+<button onclick="applyDialplan()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Apply to dialplan
+</button>
+<button onclick="regenAudio()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="mic" class="w-3.5 h-3.5"></i> Regenerate voice
+</button>
+<button onclick="saveIvr()" class="text-sm px-3 py-1.5 rounded-md bg-sky-fg text-white hover:opacity-90 flex items-center gap-1.5 transition-opacity">
+  <i data-lucide="save" class="w-3.5 h-3.5"></i> Save menu
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+  <!-- ── Inter-PBX trunks ───────────────────────────────────────────── -->
+  <section class="bg-card border border-border rounded-lg">
+    <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-fg">Inter-PBX trunks</h2>
+        <p class="text-xs text-muted-fg">SIP trunks to sibling PBXs, carried over the Tailscale transport.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="toggleAdd()" class="text-xs px-2.5 py-1 border border-border rounded-md hover:bg-card-hover flex items-center gap-1">
+          <i data-lucide="plus" class="w-3 h-3"></i> Add trunk
+        </button>
+        <button onclick="load()" class="text-xs px-2.5 py-1 border border-border rounded-md hover:bg-card-hover">Refresh</button>
+      </div>
+    </div>
+    <div id="add-trunk" class="hidden px-4 py-3 border-b border-border bg-bg/40">
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div><label class="block text-xs text-muted-fg mb-1">Trunk name</label>
+          <input id="t-name" placeholder="e.g. tokyo-trunk" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono"></div>
+        <div><label class="block text-xs text-muted-fg mb-1">Peer Tailscale IP</label>
+          <input id="t-ip" placeholder="100.x.y.z" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono"></div>
+        <div><label class="block text-xs text-muted-fg mb-1">Peer SIP port</label>
+          <input id="t-port" value="5062" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono"></div>
+        <div><label class="block text-xs text-muted-fg mb-1">Accept extensions</label>
+          <input id="t-pat" value="_1XXX" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono"></div>
+        <div><label class="block text-xs text-muted-fg mb-1">Send them to context</label>
+          <input id="t-ctx" value="from-internal" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono"></div>
+        <div class="flex items-end">
+          <button onclick="addTrunk()" class="text-sm px-3 py-1.5 rounded-md bg-sky-fg text-white hover:opacity-90 w-full">Create trunk</button>
+        </div>
+      </div>
+      <p class="text-[11px] text-muted-fg mt-2">
+        Credentials are generated for you. Only Tailscale addresses (100.64.0.0/10) are accepted —
+        SIP passwords should never cross an unencrypted network. After creating, you'll get the
+        matching half to paste on the other PBX.
+      </p>
+      <pre id="peer-config" class="hidden mt-3 p-3 text-[11px] font-mono bg-card border border-border rounded-md overflow-x-auto"></pre>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wide text-muted-fg bg-bg/40">
+          <tr><th class="text-left px-4 py-2">Trunk</th><th class="text-left px-4 py-2">Peer</th>
+              <th class="text-left px-4 py-2">Context</th><th class="text-left px-4 py-2">State</th>
+              <th class="text-left px-4 py-2">Status</th><th class="text-right px-4 py-2">RTT</th>
+              <th class="text-right px-4 py-2"></th></tr>
+        </thead>
+        <tbody id="trunk-rows"><tr><td colspan="7" class="px-4 py-6 text-center text-muted-fg">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Language selection ─────────────────────────────────────────── -->
+  <section class="bg-card border border-border rounded-lg">
+    <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold text-fg">Caller language</h2>
+        <p class="text-xs text-muted-fg">
+          An optional step in front of the menu below. Each option is spoken in its own language,
+          so a caller who only speaks Sinhala can still understand which key to press.
+          The choice rides a SIP header to the other PBXs — they never ask again.
+        </p>
+      </div>
+      <label class="flex items-center gap-2 text-xs text-fg shrink-0 ml-4">
+        <input id="lang-on" type="checkbox" onchange="toggleLangs()" class="accent-sky-fg">
+        Ask the caller
+      </label>
+    </div>
+    <div id="lang-box" class="p-4 space-y-3">
+      <div id="lang-rows" class="space-y-2"></div>
+      <div class="grid sm:grid-cols-3 gap-3 pt-2 border-t border-border">
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Default language</label>
+          <select id="lang-default" onchange="updLang('default', this.value)"
+                  class="w-full text-sm px-2 py-1.5 bg-bg border border-border rounded-md text-fg"></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Retries before defaulting</label>
+          <input id="lang-retries" type="number" min="1" max="9" onchange="updLang('retries', +this.value || 2)"
+                 class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Digit timeout (s)</label>
+          <input id="lang-digit" type="number" min="1" max="30" onchange="updLang('digit_timeout', +this.value || 5)"
+                 class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        </div>
+      </div>
+      <p class="text-[11px] text-muted-fg">
+        Turning this off restores the single-language menu exactly as it was — the
+        <code>[ai-lang]</code> context disappears and the DID goes straight back to <code>[ai-ivr]</code>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── IVR menu ───────────────────────────────────────────────────── -->
+  <section class="bg-card border border-border rounded-lg">
+    <div class="px-4 py-3 border-b border-border">
+      <h2 class="text-sm font-semibold text-fg">Inbound menu</h2>
+      <p class="text-xs text-muted-fg">
+        What a caller on the DID hears, and which PBX each key sends them to.
+        The dialplan and the spoken prompt are both generated from this — edit here, not in extensions.conf.
+      </p>
+    </div>
+    <div class="p-4 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-muted-fg mb-1">Greeting</label>
+        <div id="greeting-box"></div>
+      </div>
+
+      <div id="options" class="space-y-3"></div>
+
+      <button onclick="addOption()" class="text-xs px-2.5 py-1.5 border border-dashed border-border rounded-md text-muted-fg hover:text-fg hover:border-sky-fg flex items-center gap-1.5">
+        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add option
+      </button>
+
+      <div class="grid sm:grid-cols-3 gap-3 pt-2 border-t border-border">
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Retries before giving up</label>
+          <input id="retries" type="number" min="1" max="9" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Digit timeout (s)</label>
+          <input id="digit_timeout" type="number" min="1" max="30" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-muted-fg mb-1">Response timeout (s)</label>
+          <input id="response_timeout" type="number" min="1" max="60" class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── What the caller hears / what Asterisk runs ──────────────────── -->
+  <div class="grid lg:grid-cols-2 gap-5">
+    <section class="bg-card border border-border rounded-lg">
+      <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-fg">What the caller hears</h2>
+        <span id="audio-state" class="text-[11px] px-2 py-0.5 rounded-md border border-border text-muted-fg">—</span>
+      </div>
+      <div class="p-4 space-y-3 text-sm">
+        <div id="prompt-lang-wrap" class="hidden">
+          <div class="text-[11px] uppercase tracking-wide text-muted-fg mb-1">Language menu (first thing they hear)</div>
+          <p id="prompt-lang" class="text-fg leading-relaxed"></p>
+        </div>
+        <div><div class="text-[11px] uppercase tracking-wide text-muted-fg mb-1">Menu</div>
+             <p id="prompt-menu" class="text-fg leading-relaxed"></p></div>
+        <div><div class="text-[11px] uppercase tracking-wide text-muted-fg mb-1">Retry</div>
+             <p id="prompt-retry" class="text-muted-fg leading-relaxed"></p></div>
+        <div id="prompt-per-lang" class="space-y-2"></div>
+        <p class="text-[11px] text-muted-fg pt-2 border-t border-border">
+          Saving stores the wording. The recorded voice only changes when you press
+          <strong class="text-fg">Regenerate voice</strong> — until then callers hear the previous recording.
+        </p>
+      </div>
+    </section>
+
+    <section class="bg-card border border-border rounded-lg">
+      <div class="px-4 py-3 border-b border-border">
+        <h2 class="text-sm font-semibold text-fg">Generated dialplan</h2>
+        <p class="text-xs text-muted-fg">Preview of the <code>[ai-ivr]</code> context. Not live until you apply it.</p>
+      </div>
+      <pre id="dialplan" class="p-4 text-[11px] font-mono text-muted-fg overflow-x-auto max-h-80 whitespace-pre"></pre>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// These values are typed by an admin, but a trunk name or label still ends up in
+// innerHTML — escape everything on the way out, same rule as the dashboards.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+let STATE = { ivr: { options: [] }, trunks: [] };
+
+// Every language this UI can offer. A site enables a subset; the digit each one
+// answers to is editable because the recorded prompt has to say the same number.
+const ALL_LANGS = ['en', 'si', 'ta'];
+const DEFAULT_DIGIT = { en: '1', si: '2', ta: '3' };
+
+// Null when the site is single-language — which is the whole backward-compat
+// contract: every branch below falls back to the original single-string editor.
+function langs() {
+  const l = STATE.ivr && STATE.ivr.languages;
+  return (l && Array.isArray(l.enabled) && l.enabled.length) ? l : null;
+}
+function langName(c) { return (STATE.language_names || {})[c] || c; }
+
+// A greeting/phrase/short is EITHER a plain string (all languages, the original
+// shape) OR a { en, si, ta } object. Read and write both without ever losing the
+// other languages' text.
+function tval(v, lang) {
+  if (v && typeof v === 'object') return v[lang] || '';
+  return lang && langs() ? (lang === langs().default ? (v || '') : '') : (v || '');
+}
+function tset(obj, key, lang, value) {
+  if (!langs()) { obj[key] = value; return; }
+  const cur = obj[key];
+  const o = (cur && typeof cur === 'object') ? Object.assign({}, cur) : {};
+  // Promoting a plain string: it was said to every caller, so it belongs to the
+  // default language rather than being silently dropped.
+  if (typeof cur === 'string' && cur && !o[langs().default]) o[langs().default] = cur;
+  o[lang] = value;
+  obj[key] = o;
+}
+
+async function load() {
+  const j = await (await fetch('/api/mesh')).json();
+  STATE = j;
+  // The editor works on the raw config; the server also hands back a normalised
+  // view, which is what tells us which languages are actually live. Its derived
+  // fields are dropped so they never get saved back into mesh.json and go stale.
+  if (STATE.ivr) {
+    const L = j.languages;
+    STATE.ivr.languages = L ? {
+      enabled: L.enabled, default: L.default, map: L.map,
+      select: L.select, invalid: L.invalid, retries: L.retries,
+      digit_timeout: L.digit_timeout, response_timeout: L.response_timeout,
+    } : null;
+  }
+  renderTrunks();
+  renderLangs();
+  renderIvr();
+  renderPreview(j);
+  lucide.createIcons();
+}
+
+function renderTrunks() {
+  const tb = document.getElementById('trunk-rows');
+  if (!STATE.trunks.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="px-4 py-6 text-center text-muted-fg">' +
+      'No inter-PBX trunks found. A trunk counts as inter-PBX when its endpoint uses the Tailscale transport.</td></tr>';
+    return;
+  }
+  tb.innerHTML = STATE.trunks.map(t => {
+    const up = /avail/i.test(t.status || '');
+    const badge = up ? 'badge-emerald' : (t.status === '-' ? 'badge-muted' : 'badge-rose');
+    return `<tr class="border-t border-border">
+      <td class="px-4 py-2 font-medium text-fg">${esc(t.name)}</td>
+      <td class="px-4 py-2 font-mono text-[11px] text-muted-fg">${esc(t.contact || t.match || '—')}</td>
+      <td class="px-4 py-2 text-muted-fg">${esc(t.context || '—')}</td>
+      <td class="px-4 py-2 text-muted-fg">${esc(t.state || '—')}</td>
+      <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-md text-[11px] border font-medium ${badge}">${esc(t.status || '—')}</span></td>
+      <td class="px-4 py-2 text-right font-mono text-[11px] text-muted-fg">${esc(t.rtt_ms || '—')}</td>
+      <td class="px-4 py-2 text-right">
+        <button onclick="testTrunk('${esc(t.name)}')" class="text-xs px-2 py-1 border border-border rounded-md hover:bg-card-hover">Test</button>
+        <button onclick="delTrunk('${esc(t.name)}')" class="text-xs px-2 py-1 border border-border rounded-md text-rose-fg hover:bg-card-hover ml-1">Remove</button>
+      </td></tr>`;
+  }).join('');
+}
+
+function toggleAdd() {
+  document.getElementById('add-trunk').classList.toggle('hidden');
+  lucide.createIcons();
+}
+
+async function addTrunk() {
+  const body = {
+    name: document.getElementById('t-name').value.trim().toLowerCase(),
+    peer_ip: document.getElementById('t-ip').value.trim(),
+    peer_port: +document.getElementById('t-port').value || 5062,
+    accept_pattern: document.getElementById('t-pat').value.trim(),
+    local_context: document.getElementById('t-ctx').value.trim(),
+  };
+  if (!body.name || !body.peer_ip) return toast('Name and peer IP are required', 'error');
+  const r = await fetch('/api/mesh/trunks', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (j.error) return toast(j.error, 'error');
+  const pc = j.peer_config || {};
+  const el = document.getElementById('peer-config');
+  el.textContent =
+    'Paste this on the OTHER PBX (' + esc(body.peer_ip) + '):\n\n' +
+    '  trunk name      : ' + (pc.trunk_name_suggestion || '') + '\n' +
+    '  peer IP         : <this box\'s Tailscale IP>\n' +
+    '  inbound  user/pw: ' + pc.in_user + ' / ' + pc.in_password + '\n' +
+    '  outbound user/pw: ' + pc.out_user + ' / ' + pc.out_password + '\n\n' +
+    'Backups taken: ' + JSON.stringify(j.backups);
+  el.classList.remove('hidden');
+  toast('Trunk ' + body.name + ' created');
+  load();
+}
+
+async function delTrunk(name) {
+  if (!confirm('Remove the inter-PBX trunk "' + name + '"?\n\n' +
+               'Its PJSIP objects and dialplan context are deleted and Asterisk is reloaded. ' +
+               'Backups are taken first. Calls in progress on it will drop.')) return;
+  let r = await fetch('/api/mesh/trunks/' + encodeURIComponent(name), { method: 'DELETE' });
+  let j = await r.json();
+  if (j.error && r.status === 409) {
+    if (!confirm(j.error + '\n\nRemove it anyway?')) return;
+    r = await fetch('/api/mesh/trunks/' + encodeURIComponent(name) + '?force=1', { method: 'DELETE' });
+    j = await r.json();
+  }
+  if (j.error) return toast(j.error, 'error');
+  toast('Trunk ' + name + ' removed');
+  load();
+}
+
+async function testTrunk(name) {
+  toast('Testing ' + name + '…');
+  const r = await fetch('/api/mesh/trunk-test/' + encodeURIComponent(name), { method: 'POST' });
+  const j = await r.json();
+  if (j.error) return toast('Test failed: ' + j.error, 'error');
+  toast(`${name}: ${j.status || '?'} · RTT ${j.rtt_ms || '?'} ms`);
+  load();
+}
+
+const TARGETS = [
+  ['local_agent', 'This PBX — AI agent'],
+  ['trunk', 'Another PBX (over a trunk)'],
+  ['extension', 'Local extension'],
+  ['context', 'Local dialplan context'],
+];
+
+function toggleLangs() {
+  const on = document.getElementById('lang-on').checked;
+  if (!on) {
+    if (!confirm('Turn language selection off?\n\nCallers go straight to the business menu again ' +
+                 'and the wording you typed per language is kept but not used.')) {
+      document.getElementById('lang-on').checked = true;
+      return;
+    }
+    STATE.ivr.languages = null;
+  } else {
+    STATE.ivr.languages = {
+      enabled: ALL_LANGS.slice(), default: 'en',
+      map: Object.assign({}, { '1': 'en', '2': 'si', '3': 'ta' }),
+      retries: 2, digit_timeout: 5, response_timeout: 10, select: {}, invalid: {},
+    };
+  }
+  renderLangs(); renderIvr(); livePreview();
+}
+
+function updLang(k, v) { if (STATE.ivr.languages) { STATE.ivr.languages[k] = v; renderLangs(); } }
+
+function toggleOneLang(code, on) {
+  const L = STATE.ivr.languages;
+  if (!L) return;
+  const set = new Set(L.enabled);
+  on ? set.add(code) : set.delete(code);
+  if (!set.size) return toast('At least one language must stay enabled', 'error');
+  L.enabled = ALL_LANGS.filter(c => set.has(c));
+  L.map = L.map || {};
+  Object.keys(L.map).forEach(d => { if (!set.has(L.map[d])) delete L.map[d]; });
+  if (on && !Object.values(L.map).includes(code)) L.map[DEFAULT_DIGIT[code] || String(set.size)] = code;
+  if (!set.has(L.default)) L.default = L.enabled[0];
+  renderLangs(); renderIvr(); livePreview();
+}
+
+function updLangDigit(code, digit) {
+  const L = STATE.ivr.languages;
+  if (!L) return;
+  L.map = L.map || {};
+  Object.keys(L.map).forEach(d => { if (L.map[d] === code) delete L.map[d]; });
+  if (/^[0-9]$/.test(digit)) L.map[digit] = code;
+  renderLangs();
+}
+
+function updLangText(kind, code, text) {
+  const L = STATE.ivr.languages;
+  if (!L) return;
+  L[kind] = L[kind] || {};
+  L[kind][code] = text;
+  livePreview();
+}
+
+function renderLangs() {
+  const L = langs();
+  document.getElementById('lang-on').checked = !!L;
+  document.getElementById('lang-box').classList.toggle('hidden', !L);
+  if (!L) { document.getElementById('lang-rows').innerHTML = ''; return; }
+  const digitOf = {};
+  Object.keys(L.map || {}).forEach(d => { digitOf[L.map[d]] = d; });
+
+  document.getElementById('lang-rows').innerHTML = ALL_LANGS.map(code => {
+    const on = (L.enabled || []).includes(code);
+    const sel = (L.select || {})[code] || '';
+    return `<div class="border border-border rounded-md p-3 bg-bg/40 space-y-2">
+      <div class="flex items-center gap-2">
+        <label class="flex items-center gap-2 text-sm text-fg w-40">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleOneLang('${esc(code)}', this.checked)" class="accent-sky-fg">
+          ${esc(langName(code))} <span class="text-muted-fg font-mono text-[11px]">${esc(code)}</span>
+        </label>
+        <span class="text-xs text-muted-fg">press</span>
+        <input value="${esc(digitOf[code] || '')}" maxlength="1" ${on ? '' : 'disabled'}
+               onchange="updLangDigit('${esc(code)}', this.value)"
+               class="w-12 text-center text-sm px-2 py-1.5 bg-bg border border-border rounded-md text-fg font-mono disabled:opacity-40">
+        ${L.default === code ? '<span class="text-[11px] px-2 py-0.5 rounded-md border border-border text-muted-fg">default</span>' : ''}
+      </div>
+      <input value="${esc(sel)}" ${on ? '' : 'disabled'}
+             placeholder="Spoken IN ${esc(langName(code).toUpperCase())} — e.g. &quot;For English, press 1&quot;"
+             onchange="updLangText('select', '${esc(code)}', this.value)"
+             class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg disabled:opacity-40">
+      <p class="text-[11px] text-muted-fg">
+        Leave blank for the built-in wording. Whatever you type here is recorded in
+        ${esc(langName(code))} — say the digit above in ${esc(langName(code))} too, or the
+        recording and the dialplan will disagree.
+      </p>
+    </div>`;
+  }).join('');
+
+  document.getElementById('lang-default').innerHTML = (L.enabled || [])
+    .map(c => `<option value="${esc(c)}" ${L.default === c ? 'selected' : ''}>${esc(langName(c))}</option>`).join('');
+  document.getElementById('lang-retries').value = L.retries ?? 2;
+  document.getElementById('lang-digit').value = L.digit_timeout ?? 5;
+}
+
+// A plain text input, or one per enabled language when languages are on. `fn`
+// plus `args` build the onchange call; the handler always receives
+// (…args, langCode, value), with langCode '' on a single-language site.
+function textFields(obj, key, placeholder, fn, args) {
+  const L = langs();
+  const cls = 'w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg';
+  const pre = args || '';
+  if (!L) {
+    return `<input value="${esc(typeof obj[key] === 'object' ? '' : (obj[key] || ''))}"
+             placeholder="${esc(placeholder)}" onchange="${fn}(${pre}'', this.value)" class="${cls}">`;
+  }
+  return L.enabled.map(code => `<div class="flex items-center gap-2">
+      <span class="w-16 shrink-0 text-[11px] uppercase tracking-wide text-muted-fg">${esc(langName(code))}</span>
+      <input value="${esc(tval(obj[key], code))}" placeholder="${esc(placeholder)}"
+             onchange="${fn}(${pre}'${esc(code)}', this.value)" class="${cls}">
+    </div>`).join('');
+}
+
+function updGreeting(lang, v) {
+  if (lang) tset(STATE.ivr, 'greeting', lang, v); else STATE.ivr.greeting = v;
+  livePreview();
+}
+
+function updOptText(i, field, lang, v) {
+  const o = STATE.ivr.options[i];
+  if (lang) tset(o, field, lang, v); else o[field] = v;
+  livePreview();
+}
+
+function renderIvr() {
+  const c = STATE.ivr || {};
+  document.getElementById('greeting-box').innerHTML =
+    '<div class="space-y-2">' + textFields(c, 'greeting', 'Greeting', 'updGreeting') + '</div>';
+  document.getElementById('retries').value = c.retries ?? 3;
+  document.getElementById('digit_timeout').value = c.digit_timeout ?? 5;
+  document.getElementById('response_timeout').value = c.response_timeout ?? 12;
+  document.getElementById('audio-state').textContent = STATE.audio_present ? 'voice recorded' : 'no recording yet';
+
+  const trunkOpts = (STATE.trunks || []).map(t => t.name);
+  document.getElementById('options').innerHTML = (c.options || []).map((o, i) => {
+    const t = o.target || {};
+    return `<div class="border border-border rounded-md p-3 bg-bg/40 space-y-2" data-i="${i}">
+      <div class="flex items-center gap-2">
+        <input value="${esc(o.key)}" maxlength="1" onchange="upd(${i},'key',this.value)"
+               class="w-12 text-center text-sm px-2 py-1.5 bg-bg border border-border rounded-md text-fg font-mono">
+        <input value="${esc(o.label || '')}" placeholder="Label (for you)" onchange="upd(${i},'label',this.value)"
+               class="flex-1 text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg">
+        <select onchange="updTarget(${i},'type',this.value)"
+                class="text-sm px-2 py-1.5 bg-bg border border-border rounded-md text-fg">
+          ${TARGETS.map(([v, l]) => `<option value="${v}" ${t.type === v || (!t.type && v === 'local_agent') ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+        </select>
+        <button onclick="delOption(${i})" class="text-xs px-2 py-1.5 border border-border rounded-md text-rose-fg hover:bg-card-hover">Remove</button>
+      </div>
+      <div class="space-y-2">
+        ${textFields(o, 'phrase', 'Spoken phrase — e.g. For Happy Paws in Singapore, press 2',
+                     'updOptText', `${i},'phrase',`)}
+      </div>
+      <details class="text-xs" ${langs() ? '' : 'hidden'}>
+        <summary class="cursor-pointer text-muted-fg hover:text-fg">Shorter wording for the retry prompt</summary>
+        <div class="space-y-2 pt-2">
+          ${textFields(o, 'short', 'Short form — e.g. For Happy Paws, press 2', 'updOptText', `${i},'short',`)}
+          <p class="text-[11px] text-muted-fg">
+            Left blank, the retry repeats the full phrase above. A phrase saved as one plain
+            string is spoken to every language — fill these in per language so the Sinhala and
+            Tamil retries are not read out in English.
+          </p>
+        </div>
+      </details>
+      <div class="grid sm:grid-cols-2 gap-2 ${t.type === 'trunk' ? '' : 'hidden'}">
+        <select onchange="updTarget(${i},'trunk',this.value)"
+                class="text-sm px-2 py-1.5 bg-bg border border-border rounded-md text-fg">
+          <option value="">— trunk —</option>
+          ${trunkOpts.map(n => `<option value="${esc(n)}" ${t.trunk === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+        </select>
+        <input value="${esc(t.exten || '')}" placeholder="Extension on that PBX (e.g. 2000)"
+               onchange="updTarget(${i},'exten',this.value)"
+               class="text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono">
+      </div>
+      <div class="${t.type === 'extension' || t.type === 'context' ? '' : 'hidden'}">
+        <input value="${esc(t.exten || t.context || '')}" placeholder="${t.type === 'context' ? 'Context name' : 'Extension'}"
+               onchange="updTarget(${i},'${t.type === 'context' ? 'context' : 'exten'}',this.value)"
+               class="w-full text-sm px-3 py-1.5 bg-bg border border-border rounded-md text-fg font-mono">
+      </div>
+    </div>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+function upd(i, k, v) { STATE.ivr.options[i][k] = v; if (k === 'phrase') livePreview(); }
+function updTarget(i, k, v) {
+  const o = STATE.ivr.options[i];
+  o.target = o.target || {};
+  o.target[k] = v;
+  if (k === 'type') renderIvr();
+}
+function addOption() {
+  const used = new Set((STATE.ivr.options || []).map(o => String(o.key)));
+  const key = '123456789'.split('').find(d => !used.has(d)) || '0';
+  STATE.ivr.options.push({ key, label: '', phrase: '', target: { type: 'local_agent' } });
+  renderIvr();
+}
+function delOption(i) {
+  if (!confirm('Remove this menu option?')) return;
+  STATE.ivr.options.splice(i, 1);
+  renderIvr(); livePreview();
+}
+
+function menuTextFor(lang) {
+  const parts = [tval(STATE.ivr.greeting, lang) || (langs() ? '' : (STATE.ivr.greeting || ''))];
+  (STATE.ivr.options || []).forEach(o => {
+    const p = langs() ? tval(o.phrase, lang) : (o.phrase || '');
+    if (p) parts.push(p.replace(/\.$/, '') + '.');
+  });
+  return parts.filter(Boolean).join(' ');
+}
+
+function livePreview() {
+  const L = langs();
+  document.getElementById('prompt-menu').textContent = menuTextFor(L ? L.default : '');
+  const wrap = document.getElementById('prompt-lang-wrap');
+  wrap.classList.toggle('hidden', !L);
+  if (L) {
+    const digits = {};
+    Object.keys(L.map || {}).forEach(d => { digits[L.map[d]] = d; });
+    document.getElementById('prompt-lang').textContent = (L.enabled || [])
+      .slice().sort((a, b) => (digits[a] || '9').localeCompare(digits[b] || '9'))
+      .map(c => (L.select || {})[c] || `[built-in ${langName(c)} wording]`).join(' ');
+  }
+  document.getElementById('prompt-per-lang').innerHTML = !L ? '' : (L.enabled || [])
+    .filter(c => c !== L.default)
+    .map(c => `<div><div class="text-[11px] uppercase tracking-wide text-muted-fg mb-1">Menu · ${esc(langName(c))}</div>
+       <p class="text-muted-fg leading-relaxed">${esc(menuTextFor(c))}</p></div>`).join('');
+}
+
+function renderPreview(j) {
+  document.getElementById('prompt-menu').textContent = j.prompt_menu || '';
+  document.getElementById('prompt-retry').textContent = j.prompt_retry || '';
+  document.getElementById('dialplan').textContent = j.dialplan_preview || '';
+  const wrap = document.getElementById('prompt-lang-wrap');
+  wrap.classList.toggle('hidden', !j.prompt_lang_select);
+  document.getElementById('prompt-lang').textContent = j.prompt_lang_select || '';
+  const by = j.prompt_by_lang || {};
+  const dflt = j.languages ? j.languages.default : '';
+  document.getElementById('prompt-per-lang').innerHTML = Object.keys(by)
+    .filter(c => c !== dflt)
+    .map(c => `<div><div class="text-[11px] uppercase tracking-wide text-muted-fg mb-1">Menu · ${esc(langName(c))}</div>
+       <p class="text-muted-fg leading-relaxed">${esc(by[c].menu || '')}</p></div>`).join('');
+}
+
+function collect() {
+  const body = {
+    greeting: STATE.ivr.greeting,
+    options: STATE.ivr.options,
+    retries: +document.getElementById('retries').value || 3,
+    digit_timeout: +document.getElementById('digit_timeout').value || 5,
+    response_timeout: +document.getElementById('response_timeout').value || 12,
+  };
+  // Sent explicitly as null when switched off, so the server drops the key and
+  // the box goes back to the single-language dialplan.
+  body.languages = STATE.ivr.languages || null;
+  return body;
+}
+
+async function saveIvr() {
+  const r = await fetch('/api/mesh/ivr', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(collect())
+  });
+  const j = await r.json();
+  if (j.error) return toast(j.error, 'error');
+  renderPreview(j);
+  toast('Menu saved — apply it to make it live');
+}
+
+async function applyDialplan() {
+  if (!confirm('Write the generated [ai-ivr] context into extensions.conf and reload the dialplan?\n\n' +
+               'This changes what every inbound caller hears. A timestamped backup is taken first.')) return;
+  const r = await fetch('/api/mesh/apply', { method: 'POST' });
+  const j = await r.json();
+  if (j.error) return toast(j.error, 'error');
+  toast('Dialplan applied and reloaded');
+  console.log('rollback:', j.rollback);
+}
+
+async function regenAudio() {
+  const L = langs();
+  const n = L ? 2 + 2 * L.enabled.length : 2;
+  if (!confirm('Re-record ' + n + ' prompt' + (n === 1 ? '' : 's') + ' with the agent voice?\n\n' +
+               'This replaces the audio callers hear. It is paced to stay inside the shared ' +
+               'Gemini quota, so allow roughly ' + Math.ceil(n * 8 / 60) + ' minute(s).\n\n' +
+               'A clip that comes back silent, or in the wrong language, aborts the whole run — ' +
+               'nothing is installed and the previous recordings stay live.')) return;
+  toast('Synthesising ' + n + ' prompts…');
+  const r = await fetch('/api/mesh/audio', { method: 'POST' });
+  const j = await r.json();
+  if (j.error) return toast('TTS failed: ' + j.error, 'error');
+  toast('Voice prompts regenerated (' + (j.files || []).length + ' clips)');
+  console.log('clips:', j.files);
+  load();
+}
+
+load();
+</script>
+{% endblock %}

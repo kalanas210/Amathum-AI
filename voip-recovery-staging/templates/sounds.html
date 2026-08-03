@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Sound files{% endblock %}
+{% block page_title %}Sound files{% endblock %}
+{% block page_subtitle %}Manage custom audio files used by the dialplan (greetings, IVR prompts){% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Replace inbound greeting</h3>
+    <p class="text-[11px] text-muted-fg mt-0.5">Upload WAV/MP3 — auto-converted to 8 kHz mono PCM, μ-law, A-law and installed as <code>naxter-test-greeting</code></p>
+  </div>
+  <div class="p-5 space-y-4">
+    <label class="block border border-dashed border-border rounded-lg p-6 text-center hover:bg-card-hover transition-colors cursor-pointer">
+      <input type="file" id="audio-file" accept=".wav,.mp3,.m4a,.ogg,.flac" class="hidden">
+      <div class="flex flex-col items-center gap-2 text-muted-fg">
+        <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+        <div class="text-sm" id="file-label">Click to select an audio file</div>
+        <div class="text-[11px]">WAV, MP3, M4A, OGG, FLAC accepted</div>
+      </div>
+    </label>
+    <div class="flex items-center gap-3">
+      <button id="upload-btn" class="px-4 py-2 bg-primary text-primary-fg rounded-md text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
+        <i data-lucide="check" class="w-4 h-4"></i> Upload & install
+      </button>
+      <div id="upload-status" class="text-sm"></div>
+    </div>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Installed custom sounds</h3>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50"><tr class="text-[11px] text-muted-fg uppercase tracking-wider">
+        <th class="text-left px-5 py-2.5 font-medium">File</th>
+        <th class="text-left px-5 py-2.5 font-medium">Directory</th>
+        <th class="text-left px-5 py-2.5 font-medium">Size</th>
+        <th class="text-left px-5 py-2.5 font-medium">Modified</th>
+        <th class="text-left px-5 py-2.5 font-medium">Listen</th>
+      </tr></thead>
+      <tbody id="sounds-tbody" class="text-fg"><tr><td colspan="5" class="px-5 py-6 text-center text-muted-fg text-sm">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('audio-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  document.getElementById('file-label').textContent = f ? f.name + ' (' + fmtBytes(f.size) + ')' : 'Click to select an audio file';
+});
+
+async function refresh(){
+  setUpdatedAt();
+  const list = await apiGet('/api/sounds');
+  document.getElementById('sounds-tbody').innerHTML = list.length
+    ? list.map(s=>`<tr class="border-t border-border">
+        <td class="px-5 py-2.5"><code>${s.name}</code></td>
+        <td class="px-5 py-2.5 text-[11px] text-muted-fg font-mono">${s.dir}</td>
+        <td class="px-5 py-2.5 text-xs text-fg">${fmtBytes(s.size)}</td>
+        <td class="px-5 py-2.5 text-xs text-muted-fg">${s.mtime}</td>
+        <td class="px-5 py-2.5">${s.name.endsWith('.wav') ? `<audio controls preload="none" src="/api/sounds/download/${s.name}" class="h-8" style="max-width:220px"></audio>` : '<span class="text-muted-fg text-xs">—</span>'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="px-5 py-6 text-center text-muted-fg text-sm">No custom sounds yet</td></tr>';
+}
+
+document.getElementById('upload-btn').addEventListener('click', async () => {
+  const fi = document.getElementById('audio-file');
+  const status = document.getElementById('upload-status');
+  if (!fi.files.length) { status.innerHTML = '<span class="text-rose-fg">Pick a file first</span>'; return; }
+  status.innerHTML = '<span class="text-muted-fg">Uploading and converting…</span>';
+  const fd = new FormData(); fd.append('file', fi.files[0]);
+  const r = await fetch('/api/sounds/upload-greeting', {method:'POST', body: fd});
+  const j = await r.json();
+  if (j.ok){ status.innerHTML = '<span class="text-emerald-fg">✓ Greeting replaced — plays on next inbound call.</span>'; refresh(); }
+  else status.innerHTML = '<span class="text-rose-fg">Error: '+(j.error||'unknown')+'</span>';
+});
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+{% endblock %}

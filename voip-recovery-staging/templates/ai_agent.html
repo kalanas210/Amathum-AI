@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+{% block title %}AI Agent{% endblock %}
+{% block page_title %}AI Agent · Samali{% endblock %}
+{% block page_subtitle %}Configure the Gemini Live voice agent answering DID 0114794050{% endblock %}
+
+{% block page_actions %}
+<button id="restart-bridge-btn" class="px-3 py-1.5 text-xs font-medium border border-border bg-card text-fg rounded-md hover:bg-card-hover transition-colors flex items-center gap-1.5">
+  <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Restart bridge
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Tabs -->
+<div class="flex items-center gap-1 border-b border-border -mt-2">
+  {% for k, label, icon in [
+      ('config', 'Configuration', 'sliders-horizontal'),
+      ('voices', 'Voice preview', 'mic'),
+      ('live', 'Live calls', 'radio'),
+      ('history', 'Session history', 'history'),
+      ('customers', 'Customer records', 'users')] %}
+  <button data-tab="{{ k }}" class="tab-btn flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-fg hover:text-fg transition-colors">
+    <i data-lucide="{{ icon }}" class="w-4 h-4"></i> {{ label }}
+  </button>
+  {% endfor %}
+</div>
+
+<!-- =================== CONFIG TAB =================== -->
+<section data-pane="config" class="space-y-4">
+
+  <!-- Test-mode lock banner — visible only when test_mode is on -->
+  <div id="test-mode-banner" class="hidden bg-amber-bg border border-amber-fg/30 rounded-lg p-4 flex items-start gap-3">
+    <i data-lucide="lock" class="w-5 h-5 text-amber-fg shrink-0 mt-0.5"></i>
+    <div class="flex-1">
+      <div class="text-sm font-semibold text-amber-fg">TEST MODE — escalation target is locked</div>
+      <div class="text-xs text-amber-fg/90 mt-1">
+        While test_mode is on, the dialplan IGNORES the configured manager number and always forwards escalations to
+        <code class="font-mono">0779190005</code>. This protects against accidentally routing a real customer call to a
+        real manager during testing. The <i>Manager number</i> field below is locked.
+      </div>
+      <label class="inline-flex items-center gap-2 mt-2.5 text-xs cursor-pointer">
+        <input type="checkbox" id="cfg-test-mode" class="rounded border-amber-fg/30">
+        <span class="text-amber-fg">Keep test mode ON (recommended during testing)</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Voice</div>
+      <select id="cfg-voice" class="w-full px-3 py-2 rounded-md border bg-card text-sm font-medium"></select>
+      <div class="text-[11px] text-muted-fg mt-1.5">Try voices in the <b>Voice preview</b> tab before saving.</div>
+    </div>
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Model</div>
+      <input id="cfg-model" class="w-full px-3 py-2 rounded-md border text-sm font-mono" value="gemini-3.1-flash-live-preview">
+    </div>
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-xs uppercase tracking-wider text-muted-fg">Manager number (for escalation)</div>
+        <span id="cfg-mgr-lock" class="hidden text-[10px] font-medium px-1.5 py-0.5 bg-amber-bg text-amber-fg rounded border border-amber-fg/30 flex items-center gap-1">
+          <i data-lucide="lock" class="w-3 h-3"></i> LOCKED
+        </span>
+      </div>
+      <input id="cfg-mgr" class="w-full px-3 py-2 rounded-md border text-sm font-mono disabled:opacity-50 disabled:cursor-not-allowed" placeholder="0779190005">
+      <div class="text-[11px] text-muted-fg mt-1.5">When the agent calls <code>request_human_transfer</code>, the call is forwarded here. <span id="cfg-mgr-lock-note" class="hidden text-amber-fg"> Disabled while test mode is on.</span></div>
+    </div>
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Escalation ring timeout (seconds)</div>
+      <input id="cfg-timeout" type="number" min="5" max="300" class="w-full px-3 py-2 rounded-md border text-sm font-mono">
+      <div class="text-[11px] text-muted-fg mt-1.5">If the manager doesn't pick up within this many seconds, the call returns to the agent with the retry greeting.</div>
+    </div>
+  </div>
+
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-xs uppercase tracking-wider text-muted-fg">System prompt</div>
+      <div class="text-[11px] text-muted-fg"><span id="cfg-prompt-len">0</span> chars</div>
+    </div>
+    <textarea id="cfg-prompt" rows="14" class="w-full px-3 py-2 rounded-md border text-xs font-mono leading-relaxed resize-y"></textarea>
+    <div class="text-[11px] text-muted-fg mt-1.5">The full persona / behaviour spec. Long, structural — usually only changed for major persona shifts.</div>
+  </div>
+
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-xs uppercase tracking-wider text-muted-fg">Custom instructions</div>
+      <div class="text-[11px] text-muted-fg"><span id="cfg-custom-len">0</span> chars</div>
+    </div>
+    <textarea id="cfg-custom" rows="8" class="w-full px-3 py-2 rounded-md border text-xs font-mono leading-relaxed resize-y" placeholder="e.g. 'Always behave as a customer support agent for the service. Match tone to context — reassuring for fraud, factual for balance, empathetic for complaints. Stay strictly on banking topics.'"></textarea>
+    <div class="text-[11px] text-muted-fg mt-1.5">Short, frequently-edited overrides layered ON TOP of the system prompt. Take effect on the next call.</div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Greeting trigger (first call)</div>
+      <textarea id="cfg-greet" rows="4" class="w-full px-3 py-2 rounded-md border text-xs font-mono"></textarea>
+      <div class="text-[11px] text-muted-fg mt-1.5">Sent to the agent immediately on session open to make it speak first.</div>
+    </div>
+    <div class="bg-card border border-border rounded-lg p-5">
+      <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Retry greeting (after failed transfer)</div>
+      <textarea id="cfg-retry" rows="4" class="w-full px-3 py-2 rounded-md border text-xs font-mono"></textarea>
+      <div class="text-[11px] text-muted-fg mt-1.5">Used when the caller is returned to the agent because the manager didn't answer.</div>
+    </div>
+  </div>
+
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="text-xs uppercase tracking-wider text-muted-fg mb-1">Escalation announcement</div>
+    <input id="cfg-announce" class="w-full px-3 py-2 rounded-md border text-sm">
+    <div class="text-[11px] text-muted-fg mt-1.5">Text the agent will say before transferring (it's instructed via the system prompt — this is a fallback record only).</div>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <button id="save-cfg-btn" class="px-4 py-2 bg-primary text-primary-fg text-sm font-medium rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5">
+      <i data-lucide="save" class="w-4 h-4"></i> Save configuration
+    </button>
+    <button id="reload-cfg-btn" class="px-3 py-2 border border-border bg-card text-sm font-medium rounded-md hover:bg-card-hover">Reload from disk</button>
+    <span id="save-status" class="text-xs text-muted-fg"></span>
+  </div>
+</section>
+
+<!-- =================== VOICES TAB =================== -->
+<section data-pane="voices" class="space-y-4 hidden">
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="text-sm font-medium mb-3 flex items-center gap-2">
+      <i data-lucide="mic" class="w-4 h-4"></i> Test voices before setting one as the agent's main voice.
+    </div>
+    <div class="grid grid-cols-2 gap-3 items-end">
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-muted-fg mb-1">Sample text</label>
+        <textarea id="vt-text" rows="3" class="w-full px-3 py-2 rounded-md border text-sm">Hello, this is Samali from Sampath Bank customer service. How can I help you today?</textarea>
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-muted-fg mb-1">Try the same text in any voice</label>
+        <p class="text-[11px] text-muted-fg">Click "Play" next to a voice. The first render takes 1-2 seconds; subsequent plays of the same voice+text combo are instant (cached).</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="voice-grid" class="grid grid-cols-3 gap-3"></div>
+
+  <div class="bg-card border border-border rounded-lg p-4 flex items-center gap-3">
+    <i data-lucide="info" class="w-4 h-4 text-sky-fg shrink-0"></i>
+    <div class="text-sm">
+      <b>Current agent voice:</b> <span id="vt-current" class="font-mono">—</span>.
+      To make a voice the agent's main voice, set it in the <b>Configuration</b> tab and save.
+    </div>
+  </div>
+</section>
+
+<!-- =================== LIVE CALLS TAB =================== -->
+<section data-pane="live" class="space-y-4 hidden">
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm font-medium flex items-center gap-2">
+        <span class="w-2 h-2 bg-rose-fg rounded-full animate-pulse"></span>
+        Active sessions
+      </div>
+      <button id="refresh-live-btn" class="px-3 py-1.5 text-xs font-medium border border-border bg-card text-fg rounded-md hover:bg-card-hover transition-colors">Refresh</button>
+    </div>
+    <div id="live-sessions-list" class="space-y-2">
+      <div class="text-sm text-muted-fg">No active sessions.</div>
+    </div>
+  </div>
+
+  <div id="live-detail" class="bg-card border border-border rounded-lg p-5 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-sm font-medium" id="live-detail-title">Session</div>
+      <button id="live-close-btn" class="text-muted-fg hover:text-fg">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="grid grid-cols-[2fr_1fr] gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-wider text-muted-fg mb-2">Live transcript</div>
+        <div id="live-transcript" class="space-y-1.5 max-h-[60vh] overflow-y-auto text-sm pr-2"></div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wider text-muted-fg mb-2">Extracted info</div>
+        <div id="live-extracted" class="space-y-1.5 text-sm">
+          <div class="text-muted-fg">Waiting for customer info…</div>
+        </div>
+        <div class="text-xs uppercase tracking-wider text-muted-fg mt-4 mb-2">Activity</div>
+        <div id="live-events" class="space-y-1 text-xs font-mono text-muted-fg max-h-48 overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== HISTORY TAB =================== -->
+<section data-pane="history" class="space-y-4 hidden">
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <div class="px-5 py-3 border-b border-border flex items-center justify-between">
+      <div class="text-sm font-medium">Recent sessions</div>
+      <button id="refresh-history-btn" class="px-3 py-1.5 text-xs font-medium border border-border bg-card text-fg rounded-md hover:bg-card-hover transition-colors">Refresh</button>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-left">
+        <tr class="border-b border-border text-xs uppercase tracking-wider text-muted-fg">
+          <th class="px-5 py-2.5">Started</th>
+          <th class="px-5 py-2.5">Caller</th>
+          <th class="px-5 py-2.5">Language</th>
+          <th class="px-5 py-2.5">Duration</th>
+          <th class="px-5 py-2.5">Turns</th>
+          <th class="px-5 py-2.5">Extracted</th>
+          <th class="px-5 py-2.5">Outcome</th>
+          <th class="px-5 py-2.5">Recording</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody"></tbody>
+    </table>
+  </div>
+
+  <div id="history-detail" class="bg-card border border-border rounded-lg p-5 hidden"></div>
+</section>
+
+<!-- =================== CUSTOMERS TAB =================== -->
+<section data-pane="customers" class="space-y-4 hidden">
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <div class="px-5 py-3 border-b border-border text-sm font-medium">Customer records</div>
+    <table class="w-full text-sm">
+      <thead class="text-left">
+        <tr class="border-b border-border text-xs uppercase tracking-wider text-muted-fg">
+          <th class="px-5 py-2.5">Key</th>
+          <th class="px-5 py-2.5">Fields</th>
+          <th class="px-5 py-2.5">Last updated</th>
+        </tr>
+      </thead>
+      <tbody id="customers-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let CONFIG = null;
+let ACTIVE_TAB = 'config';
+let LIVE_ES = null;            // EventSource for currently watched live session
+let LIVE_WATCHED_ID = null;
+
+// Language mark for a call (server detects it from the transcript script).
+function langBadge(code) {
+  const m = { si: ['සිංහල', 'emerald'], en: ['English', 'sky'], ta: ['தமிழ்', 'amber'] };
+  const x = m[code];
+  return x ? badge(x[0], x[1]) : '<span class="text-muted-fg text-xs">—</span>';
+}
+
+// ============ Tab switching ============
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const k = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      const active = b.dataset.tab === k;
+      b.classList.toggle('border-primary', active);
+      b.classList.toggle('text-fg', active);
+      b.classList.toggle('text-muted-fg', !active);
+      b.classList.toggle('font-semibold', active);
+    });
+    document.querySelectorAll('[data-pane]').forEach(p => {
+      p.classList.toggle('hidden', p.dataset.pane !== k);
+    });
+    ACTIVE_TAB = k;
+    if (k === 'live') refreshLiveSessions();
+    if (k === 'history') refreshHistory();
+    if (k === 'customers') refreshCustomers();
+  });
+});
+
+// ============ Config tab ============
+async function loadConfig() {
+  CONFIG = await apiGet('/api/ai-agent/config');
+  const voiceSel = document.getElementById('cfg-voice');
+  voiceSel.innerHTML = '';
+  (CONFIG.voices || []).forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    if (v === CONFIG.voice) opt.selected = true;
+    voiceSel.appendChild(opt);
+  });
+  document.getElementById('cfg-model').value = CONFIG.model || '';
+  document.getElementById('cfg-mgr').value = CONFIG.manager_number || '';
+  document.getElementById('cfg-timeout').value = CONFIG.escalation_timeout_sec || 60;
+  document.getElementById('cfg-prompt').value = CONFIG.system_prompt || '';
+  document.getElementById('cfg-greet').value = CONFIG.greeting_trigger || '';
+  document.getElementById('cfg-retry').value = CONFIG.retry_greeting_trigger || '';
+  document.getElementById('cfg-announce').value = CONFIG.escalation_announcement || '';
+  document.getElementById('cfg-prompt-len').textContent = (CONFIG.system_prompt || '').length;
+  document.getElementById('cfg-custom').value = CONFIG.custom_instructions || '';
+  document.getElementById('cfg-custom-len').textContent = (CONFIG.custom_instructions || '').length;
+  document.getElementById('vt-current').textContent = CONFIG.voice || '—';
+
+  // Test-mode banner / lock
+  const testOn = CONFIG.test_mode !== false;  // default ON if missing
+  document.getElementById('test-mode-banner').classList.toggle('hidden', !testOn);
+  document.getElementById('cfg-test-mode').checked = testOn;
+  document.getElementById('cfg-mgr').disabled = testOn;
+  document.getElementById('cfg-mgr-lock').classList.toggle('hidden', !testOn);
+  document.getElementById('cfg-mgr-lock-note').classList.toggle('hidden', !testOn);
+
+  renderVoiceGrid();
+  lucide.createIcons();
+}
+document.getElementById('cfg-prompt').addEventListener('input', e => {
+  document.getElementById('cfg-prompt-len').textContent = e.target.value.length;
+});
+document.getElementById('cfg-custom').addEventListener('input', e => {
+  document.getElementById('cfg-custom-len').textContent = e.target.value.length;
+});
+document.getElementById('save-cfg-btn').addEventListener('click', async () => {
+  const testOn = document.getElementById('cfg-test-mode').checked;
+  const body = {
+    voice: document.getElementById('cfg-voice').value,
+    model: document.getElementById('cfg-model').value.trim(),
+    escalation_timeout_sec: parseInt(document.getElementById('cfg-timeout').value, 10),
+    system_prompt: document.getElementById('cfg-prompt').value,
+    greeting_trigger: document.getElementById('cfg-greet').value,
+    retry_greeting_trigger: document.getElementById('cfg-retry').value,
+    escalation_announcement: document.getElementById('cfg-announce').value,
+    custom_instructions: document.getElementById('cfg-custom').value,
+    test_mode: testOn,
+  };
+  // Only send manager_number when test mode is OFF — server rejects edits while locked.
+  if (!testOn) body.manager_number = document.getElementById('cfg-mgr').value.trim();
+  const r = await fetch('/api/ai-agent/config', {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    toast('Configuration saved. Takes effect on next call.');
+    CONFIG = j.config;
+    document.getElementById('vt-current').textContent = CONFIG.voice || '—';
+    renderVoiceGrid();
+  } else {
+    toast('Save failed: ' + (j.error || 'unknown'), 'error');
+  }
+});
+document.getElementById('reload-cfg-btn').addEventListener('click', loadConfig);
+
+// Extra safety: confirm before turning test_mode OFF
+document.getElementById('cfg-test-mode').addEventListener('change', function() {
+  if (!this.checked) {
+    const ok = confirm('Disabling TEST MODE will allow the AI to forward calls to whatever manager_number is configured — including real production phone numbers. Are you sure you want to disable test mode? (You still have to click "Save configuration" to commit.)');
+    if (!ok) { this.checked = true; return; }
+  }
+  // Toggle the field's enabled state live
+  document.getElementById('cfg-mgr').disabled = this.checked;
+  document.getElementById('cfg-mgr-lock').classList.toggle('hidden', !this.checked);
+  document.getElementById('cfg-mgr-lock-note').classList.toggle('hidden', !this.checked);
+});
+document.getElementById('restart-bridge-btn').addEventListener('click', async () => {
+  if (!confirm('Restart sampath-ai service? Active calls will drop.')) return;
+  const j = await apiPost('/api/ai-agent/restart-bridge');
+  if (j.rc === 0) toast('Bridge restarted'); else toast('Restart failed: ' + (j.output || ''), 'error');
+});
+
+// ============ Voice preview ============
+function renderVoiceGrid() {
+  const grid = document.getElementById('voice-grid');
+  grid.innerHTML = '';
+  (CONFIG?.voices || []).forEach(v => {
+    const isCurrent = v === CONFIG?.voice;
+    const card = document.createElement('div');
+    card.className = `bg-card border ${isCurrent ? 'border-primary' : 'border-border'} rounded-lg p-4`;
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <div class="font-mono text-sm font-semibold">${v}</div>
+        ${isCurrent ? '<span class="px-2 py-0.5 bg-emerald-bg text-emerald-fg text-[10px] font-medium rounded-md border border-emerald-fg/20">CURRENT</span>' : ''}
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="vt-play px-3 py-1.5 text-xs font-medium border border-border bg-card text-fg rounded-md hover:bg-card-hover transition-colors flex items-center gap-1" data-voice="${v}">
+          <i data-lucide="play" class="w-3 h-3"></i> Play
+        </button>
+        <button class="vt-make px-3 py-1.5 text-xs font-medium ${isCurrent ? 'opacity-50 cursor-not-allowed' : 'bg-primary text-primary-fg hover:opacity-90'} rounded-md transition-opacity" data-voice="${v}" ${isCurrent ? 'disabled' : ''}>
+          Make main
+        </button>
+        <audio data-voice="${v}" controls class="hidden flex-1 h-8"></audio>
+      </div>
+      <div class="vt-status text-[11px] text-muted-fg mt-1.5" data-voice="${v}"></div>
+    `;
+    grid.appendChild(card);
+  });
+  lucide.createIcons();
+  grid.querySelectorAll('.vt-play').forEach(b => b.addEventListener('click', () => playVoice(b.dataset.voice)));
+  grid.querySelectorAll('.vt-make').forEach(b => b.addEventListener('click', () => makeMain(b.dataset.voice)));
+}
+
+async function playVoice(voice) {
+  const text = document.getElementById('vt-text').value.trim();
+  if (!text) { toast('Enter sample text first', 'error'); return; }
+  const status = document.querySelector(`.vt-status[data-voice="${voice}"]`);
+  const audio = document.querySelector(`audio[data-voice="${voice}"]`);
+  status.textContent = 'Generating sample…';
+  try {
+    const j = await fetch('/api/ai-agent/voice-test', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({voice, text}),
+    }).then(r => r.json());
+    if (j.error) {
+      status.textContent = 'Error: ' + j.error;
+      return;
+    }
+    audio.src = j.url + '?t=' + Date.now();
+    audio.classList.remove('hidden');
+    audio.play();
+    status.textContent = `Ready · ${fmtBytes(j.size)} WAV`;
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function makeMain(voice) {
+  if (!confirm(`Set "${voice}" as the agent's main voice? Will apply to next call.`)) return;
+  const r = await fetch('/api/ai-agent/config', {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({voice}),
+  });
+  const j = await r.json();
+  if (j.ok) {
+    toast(`Voice changed to ${voice}`);
+    CONFIG = j.config;
+    document.getElementById('cfg-voice').value = voice;
+    document.getElementById('vt-current').textContent = voice;
+    renderVoiceGrid();
+  } else {
+    toast('Failed: ' + (j.error || 'unknown'), 'error');
+  }
+}
+
+// ============ Live sessions ============
+async function refreshLiveSessions() {
+  const list = document.getElementById('live-sessions-list');
+  const all = await apiGet('/api/ai-agent/sessions?limit=30');
+  const active = all.filter(s => s.active);
+  if (!active.length) {
+    list.innerHTML = '<div class="text-sm text-muted-fg">No active sessions. When a call comes in, it will appear here in real time.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  active.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'border border-border rounded-md p-3 hover:bg-card-hover cursor-pointer';
+    const extKeys = Object.keys(s.extracted || {});
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-mono text-xs text-muted-fg">${esc(s.id.slice(0, 8))}…</div>
+          <div class="text-sm font-medium">${esc(s.caller_num || '(unknown caller)')}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs flex items-center gap-1 justify-end">
+            <span class="w-1.5 h-1.5 bg-rose-fg rounded-full animate-pulse"></span>
+            <span>${s.mode === 'retry' ? 'Retry' : 'Active'}</span>
+          </div>
+          <div class="text-[11px] text-muted-fg flex items-center gap-1.5 justify-end mt-0.5">${langBadge(s.language)}<span>${s.turns} turns · ${extKeys.length} extracted</span></div>
+        </div>
+      </div>
+    `;
+    card.addEventListener('click', () => watchLive(s.id));
+    list.appendChild(card);
+  });
+  lucide.createIcons();
+}
+
+function watchLive(id) {
+  if (LIVE_ES) { LIVE_ES.close(); LIVE_ES = null; }
+  LIVE_WATCHED_ID = id;
+  const det = document.getElementById('live-detail');
+  det.classList.remove('hidden');
+  document.getElementById('live-detail-title').textContent = `Session ${id.slice(0, 13)}…`;
+  document.getElementById('live-transcript').innerHTML = '';
+  document.getElementById('live-extracted').innerHTML = '<div class="text-muted-fg">Waiting for customer info…</div>';
+  document.getElementById('live-events').innerHTML = '';
+
+  LIVE_ES = new EventSource(`/api/ai-agent/sessions/${id}/stream`);
+  const extracted = {};
+  LIVE_ES.onmessage = (e) => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch (_) { return; }
+    if (ev.type === 'transcript') {
+      const t = document.getElementById('live-transcript');
+      const isUser = ev.role === 'user';
+      const bubble = document.createElement('div');
+      bubble.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`;
+      bubble.innerHTML = `<div class="max-w-[80%] px-3 py-1.5 rounded-lg text-sm leading-relaxed ${isUser ? 'bg-sky-bg text-sky-fg' : 'bg-muted text-fg border border-border'}">${esc(ev.text)}</div>`;
+      t.appendChild(bubble);
+      t.scrollTop = t.scrollHeight;
+    } else if (ev.type === 'extracted') {
+      extracted[ev.field] = ev.value;
+      const e2 = document.getElementById('live-extracted');
+      e2.innerHTML = Object.entries(extracted).map(([k, v]) =>
+        `<div class="flex justify-between gap-2 text-sm border-b border-border last:border-0 py-1">
+          <span class="text-muted-fg font-mono text-xs">${esc(k)}</span>
+          <span class="font-medium text-right">${esc(v)}</span>
+        </div>`
+      ).join('');
+    } else {
+      const e3 = document.getElementById('live-events');
+      const line = document.createElement('div');
+      line.textContent = `${(ev.ts || '').slice(11,19)} ${ev.type}`;
+      e3.appendChild(line);
+      e3.scrollTop = e3.scrollHeight;
+    }
+  };
+}
+
+document.getElementById('live-close-btn').addEventListener('click', () => {
+  if (LIVE_ES) { LIVE_ES.close(); LIVE_ES = null; }
+  LIVE_WATCHED_ID = null;
+  document.getElementById('live-detail').classList.add('hidden');
+});
+document.getElementById('refresh-live-btn').addEventListener('click', refreshLiveSessions);
+
+// ============ History ============
+async function refreshHistory() {
+  const tbody = document.getElementById('history-tbody');
+  const all = await apiGet('/api/ai-agent/sessions?limit=100');
+  if (!all.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted-fg text-sm py-6">No sessions yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  all.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-border last:border-0';
+    const extPreview = Object.entries(s.extracted || {}).slice(0, 3)
+      .map(([k, v]) => `<span class="px-1.5 py-0.5 text-[11px] bg-muted text-muted-fg rounded font-mono">${esc(k)}=${esc((v || '').slice(0, 18))}</span>`).join(' ');
+    const outcome = s.escalated ? badge('escalated', 'amber')
+                  : s.ended_via_tool === 'end_call' ? badge('graceful end', 'emerald')
+                  : s.active ? badge('active', 'sky')
+                  : badge('ended', 'muted');
+    tr.innerHTML = `
+      <td class="px-5 py-2.5 text-xs text-muted-fg font-mono">${(s.started_at || '').replace('T', ' ').slice(0,19)}</td>
+      <td class="px-5 py-2.5 text-sm font-medium">${s.caller_num ? esc(s.caller_num) : '<span class="text-muted-fg">unknown</span>'}</td>
+      <td class="px-5 py-2.5">${langBadge(s.language)}</td>
+      <td class="px-5 py-2.5 text-sm">${s.duration_s ? s.duration_s.toFixed(1) + 's' : '-'}</td>
+      <td class="px-5 py-2.5 text-sm">${s.turns}</td>
+      <td class="px-5 py-2.5">${extPreview || '<span class="text-muted-fg text-xs">—</span>'}</td>
+      <td class="px-5 py-2.5">${outcome}</td>
+      <td class="px-5 py-2.5">${s.recording
+          ? `<audio controls preload="none" src="/api/ai-agent/sessions/${s.id}/recording" class="h-7"></audio>`
+          : '<span class="text-muted-fg text-xs">—</span>'}</td>
+    `;
+    tr.addEventListener('click', e => { if (e.target.tagName === 'AUDIO') return; showHistoryDetail(s.id); });
+    tr.style.cursor = 'pointer';
+    tbody.appendChild(tr);
+  });
+}
+
+async function showHistoryDetail(id) {
+  const det = document.getElementById('history-detail');
+  det.classList.remove('hidden');
+  det.innerHTML = '<div class="text-muted-fg">Loading…</div>';
+  const j = await apiGet(`/api/ai-agent/sessions/${id}`);
+  const s = j.summary;
+  const tr = j.events.filter(e => e.type === 'transcript').map(e =>
+    `<div class="flex ${e.role === 'user' ? 'justify-end' : 'justify-start'} mb-1.5">
+      <div class="max-w-[80%] px-3 py-1.5 rounded-lg text-sm leading-relaxed ${e.role === 'user' ? 'bg-sky-bg text-sky-fg' : 'bg-muted border border-border'}">${esc(e.text)}</div>
+    </div>`).join('');
+  const extracted = Object.entries(s.extracted || {}).map(([k, v]) =>
+    `<div class="flex justify-between gap-2 text-sm border-b border-border last:border-0 py-1">
+      <span class="text-muted-fg font-mono text-xs">${esc(k)}</span>
+      <span class="font-medium text-right">${esc(v)}</span>
+    </div>`).join('') || '<div class="text-muted-fg text-sm">No info extracted.</div>';
+  det.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="text-sm font-medium flex items-center gap-2">Session ${id.slice(0,13)}… ${langBadge(s.language)}</div>
+        <div class="text-xs text-muted-fg font-mono">${id}</div>
+      </div>
+      <button onclick="document.getElementById('history-detail').classList.add('hidden')" class="text-muted-fg hover:text-fg">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+    <div class="grid grid-cols-[2fr_1fr] gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-wider text-muted-fg mb-2">Transcript</div>
+        <div class="max-h-[60vh] overflow-y-auto pr-2">${tr || '<div class="text-muted-fg text-sm">No transcript captured.</div>'}</div>
+      </div>
+      <div>
+        <div class="text-xs uppercase tracking-wider text-muted-fg mb-2">Extracted info</div>
+        ${extracted}
+        ${s.recording ? `
+          <div class="text-xs uppercase tracking-wider text-muted-fg mt-4 mb-2">Recording</div>
+          <audio controls src="/api/ai-agent/sessions/${id}/recording" class="w-full"></audio>
+        ` : ''}
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+}
+
+document.getElementById('refresh-history-btn').addEventListener('click', refreshHistory);
+
+// ============ Customers ============
+async function refreshCustomers() {
+  const tbody = document.getElementById('customers-tbody');
+  const all = await apiGet('/api/ai-agent/customers');
+  if (!all.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted-fg text-sm py-6">No customer records yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = all.map(c => `
+    <tr class="border-b border-border last:border-0">
+      <td class="px-5 py-2.5 text-sm font-mono">${esc(c.key)}</td>
+      <td class="px-5 py-2.5 text-sm">${Object.entries(c.fields || {}).map(([k,v]) =>
+        `<span class="px-1.5 py-0.5 mr-1 text-[11px] bg-muted text-muted-fg rounded font-mono">${esc(k)}=${esc(v)}</span>`).join('') || '<span class="text-muted-fg">-</span>'}</td>
+      <td class="px-5 py-2.5 text-xs text-muted-fg font-mono">${(c.last_updated || '').replace('T',' ').slice(0,19)}</td>
+    </tr>
+  `).join('');
+}
+
+// ============ Boot ============
+(async () => {
+  await loadConfig();
+  // start on config tab
+  document.querySelector('.tab-btn[data-tab="config"]').click();
+  // gentle live-sessions polling so the "Live calls" badge stays fresh
+  setInterval(() => { if (ACTIVE_TAB === 'live') refreshLiveSessions(); }, 5000);
+  lucide.createIcons();
+})();
+</script>
+{% endblock %}

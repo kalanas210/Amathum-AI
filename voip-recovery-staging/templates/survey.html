@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Feedback Survey{% endblock %}
+{% block page_title %}Feedback Survey{% endblock %}
+{% block page_subtitle %}Dial-pad NPS survey — recorded prompt + keypad score, no AI agent{% endblock %}
+
+{% block page_actions %}
+<button onclick="loadAll()" class="p-2 text-muted-fg hover:bg-accent hover:text-fg rounded-md transition-colors" title="Refresh">
+  <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-2.5 rounded-md text-xs bg-sky-bg text-sky-fg border border-sky-fg/20 flex items-center gap-2">
+  <i data-lucide="info" class="w-3.5 h-3.5 shrink-0"></i>
+  <span>When <strong>Dial-pad Survey</strong> is on, inbound calls to the DID hear the recorded Sinhala survey and press <strong>0–10</strong> — the AI voice agent (Gemini) does <strong>not</strong> answer. Switching takes effect on the <strong>next call</strong>; calls in progress are unaffected.</span>
+</div>
+
+<!-- Inbound mode switch -->
+<div class="border border-border rounded-xl bg-card p-5">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h3 class="font-semibold text-fg">Inbound answering mode</h3>
+      <p class="text-[12px] text-muted-fg mt-1">Who answers calls to <code>0114794050</code> right now.</p>
+    </div>
+    <div id="mode-state" class="text-sm text-muted-fg">Loading…</div>
+  </div>
+  <div id="mode-grid" class="grid gap-3 sm:grid-cols-2 mt-4"></div>
+</div>
+
+<!-- Summary -->
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <div class="border border-border rounded-xl bg-card p-5">
+    <div class="text-[11px] uppercase tracking-wider text-muted-fg font-medium">Responses</div>
+    <div id="s-responses" class="text-3xl font-semibold text-fg mt-1">–</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-5">
+    <div class="text-[11px] uppercase tracking-wider text-muted-fg font-medium">Average score</div>
+    <div id="s-avg" class="text-3xl font-semibold text-fg mt-1">–</div>
+    <div class="text-[11px] text-muted-fg mt-0.5">out of 10</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-5">
+    <div class="text-[11px] uppercase tracking-wider text-muted-fg font-medium">NPS</div>
+    <div id="s-nps" class="text-3xl font-semibold text-fg mt-1">–</div>
+    <div class="text-[11px] text-muted-fg mt-0.5">promoters − detractors</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-5">
+    <div class="text-[11px] uppercase tracking-wider text-muted-fg font-medium">Breakdown</div>
+    <div class="mt-2 space-y-1 text-[12px]">
+      <div class="flex items-center justify-between"><span class="text-emerald-fg">Promoters (9–10)</span><span id="s-prom" class="font-medium text-fg">–</span></div>
+      <div class="flex items-center justify-between"><span class="text-amber-fg">Passives (7–8)</span><span id="s-pass" class="font-medium text-fg">–</span></div>
+      <div class="flex items-center justify-between"><span class="text-rose-fg">Detractors (0–6)</span><span id="s-detr" class="font-medium text-fg">–</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Distribution + test call -->
+<div class="grid gap-4 lg:grid-cols-3">
+  <div class="border border-border rounded-xl bg-card p-5 lg:col-span-2">
+    <h3 class="font-semibold text-fg text-sm">Score distribution</h3>
+    <div id="dist" class="mt-4 space-y-1.5"></div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-5">
+    <h3 class="font-semibold text-fg text-sm">Send a test survey call</h3>
+    <p class="text-[12px] text-muted-fg mt-1">Dials one number straight into the survey (outbound), regardless of the inbound mode above.</p>
+    <label class="block text-[11px] uppercase tracking-wider text-muted-fg font-medium mt-4 mb-1">Phone number</label>
+    <input id="test-to" type="tel" inputmode="tel" placeholder="0771234567"
+      class="w-full px-3 py-2 rounded-md border border-border bg-bg text-sm">
+    <button onclick="sendTest(this)" class="mt-3 w-full py-2 rounded-md text-sm font-medium bg-primary text-primary-fg hover:opacity-90 transition-colors">
+      <i data-lucide="phone-outgoing" class="w-4 h-4 inline -mt-0.5 mr-1"></i>Call &amp; play survey
+    </button>
+  </div>
+</div>
+
+<!-- Responses -->
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3 border-b border-border flex items-center justify-between">
+    <h3 class="font-semibold text-fg text-sm">Responses</h3>
+    <span id="resp-count" class="text-[11px] text-muted-fg"></span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-[11px] uppercase tracking-wider text-muted-fg border-b border-border">
+          <th class="px-5 py-2.5 font-medium">Time (UTC)</th>
+          <th class="px-5 py-2.5 font-medium">Caller</th>
+          <th class="px-5 py-2.5 font-medium">Score</th>
+          <th class="px-5 py-2.5 font-medium">Category</th>
+          <th class="px-5 py-2.5 font-medium">Direction</th>
+        </tr>
+      </thead>
+      <tbody id="resp-body">
+        <tr><td colspan="5" class="px-5 py-10 text-center text-muted-fg">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function scoreBadge(s) {
+  const n = parseInt(s, 10);
+  const k = (n >= 9) ? 'emerald' : (n >= 7) ? 'amber' : 'rose';
+  return badge(String(s), k);
+}
+function catLabel(s) {
+  const n = parseInt(s, 10);
+  if (n >= 9) return badge('Promoter', 'emerald');
+  if (n >= 7) return badge('Passive', 'amber');
+  return badge('Detractor', 'rose');
+}
+
+function renderMode(mode) {
+  document.getElementById('mode-state').innerHTML = mode === 'survey'
+    ? badge('Dial-pad Survey — LIVE', 'emerald')
+    : badge('AI Voice Agent', 'sky');
+  const opts = [
+    { key: 'agent',  icon: 'bot',            label: 'AI Voice Agent',  desc: 'Gemini answers and converses (default).' },
+    { key: 'survey', icon: 'clipboard-check', label: 'Dial-pad Survey', desc: 'Plays the recorded prompt, collects a 0–10 keypad score.' },
+  ];
+  document.getElementById('mode-grid').innerHTML = opts.map(o => {
+    const on = mode === o.key;
+    return `
+    <div class="border rounded-lg p-4 flex flex-col ${on ? 'border-emerald-fg/50 ring-1 ring-emerald-fg/30' : 'border-border'}">
+      <div class="flex items-center gap-2">
+        <i data-lucide="${o.icon}" class="w-4 h-4 text-muted-fg"></i>
+        <span class="font-medium text-fg text-sm">${o.label}</span>
+        ${on ? '<span class="ml-auto text-[10px] text-emerald-fg font-medium">CURRENT</span>' : ''}
+      </div>
+      <p class="text-[12px] text-muted-fg mt-1 flex-1">${o.desc}</p>
+      <button onclick="setMode('${o.key}', this)" ${on ? 'disabled' : ''}
+        class="mt-3 py-1.5 rounded-md text-[13px] font-medium transition-colors ${on ? 'bg-emerald-bg text-emerald-fg cursor-default' : 'bg-primary text-primary-fg hover:opacity-90'}">
+        ${on ? '✓ Active' : 'Switch to ' + o.label}</button>
+    </div>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function setMode(mode, btn) {
+  if (mode === 'survey' && !confirm('Switch inbound calls to the dial-pad survey?\n\nThe AI voice agent will STOP answering incoming calls until you switch back.')) return;
+  if (mode === 'agent' && !confirm('Switch inbound calls back to the AI voice agent?')) return;
+  btn.disabled = true; btn.textContent = 'Switching…';
+  const r = await apiPost('/api/survey/mode', { mode });
+  if (r.ok) { toast(mode === 'survey' ? 'Dial-pad survey is now answering inbound calls' : 'AI voice agent is now answering inbound calls'); loadAll(); }
+  else { toast(r.error || 'Could not switch mode', 'error'); loadAll(); }
+}
+
+function renderDist(dist, total) {
+  const el = document.getElementById('dist');
+  let html = '';
+  for (let i = 0; i <= 10; i++) {
+    const c = (dist && dist[i]) ? dist[i] : 0;
+    const pct = total ? Math.round(100 * c / total) : 0;
+    const color = (i >= 9) ? 'bg-emerald-fg' : (i >= 7) ? 'bg-amber-fg' : 'bg-rose-fg';
+    html += `
+      <div class="flex items-center gap-2">
+        <span class="w-6 text-right text-[12px] tabular-nums text-muted-fg">${i}</span>
+        <div class="flex-1 h-4 rounded bg-muted overflow-hidden">
+          <div class="h-full ${color}" style="width:${pct}%"></div>
+        </div>
+        <span class="w-10 text-right text-[12px] tabular-nums text-fg">${c}</span>
+      </div>`;
+  }
+  el.innerHTML = html;
+}
+
+async function sendTest(btn) {
+  const to = (document.getElementById('test-to').value || '').trim();
+  if (!to) { toast('Enter a phone number', 'error'); return; }
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Calling… (waiting up to 15s)';
+  let r;
+  try { r = await apiPost('/api/survey/testcall', { to }); }
+  catch (e) { r = { error: 'request failed' }; }
+  btn.disabled = false; btn.innerHTML = orig;
+  if (window.lucide) lucide.createIcons();
+  if (r.error) { toast(r.error, 'error'); return; }
+  if (r.ok) toast(r.detail || ('Survey call placed to ' + to));
+  else toast(r.detail || 'Call failed', 'error');
+}
+
+async function loadAll() {
+  setUpdatedAt && setUpdatedAt();
+  let d;
+  try { d = await apiGet('/api/survey/results'); } catch (e) { return; }
+  renderMode(d.mode || 'agent');
+  const s = d.summary || {};
+  document.getElementById('s-responses').textContent = s.responses ?? 0;
+  document.getElementById('s-avg').textContent = (s.avg ?? null) === null ? '–' : s.avg;
+  document.getElementById('s-nps').textContent = (s.nps ?? null) === null ? '–' : s.nps;
+  document.getElementById('s-prom').textContent = s.promoters ?? 0;
+  document.getElementById('s-pass').textContent = s.passives ?? 0;
+  document.getElementById('s-detr').textContent = s.detractors ?? 0;
+  renderDist(s.distribution, s.responses || 0);
+
+  const rows = d.responses || [];
+  document.getElementById('resp-count').textContent = rows.length + ' shown';
+  const tbody = document.getElementById('resp-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="px-5 py-10 text-center text-muted-fg">No responses yet. Turn on Dial-pad Survey (or send a test call) and dial in.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(r => `
+      <tr class="border-b border-border last:border-0">
+        <td class="px-5 py-2.5 text-muted-fg tabular-nums">${(r.ts || '').replace('T', ' ').replace('Z', '')}</td>
+        <td class="px-5 py-2.5 text-fg tabular-nums">${esc(r.caller || '-')}</td>
+        <td class="px-5 py-2.5">${scoreBadge(r.score)}</td>
+        <td class="px-5 py-2.5">${catLabel(r.score)}</td>
+        <td class="px-5 py-2.5">${badge(r.direction || 'inbound', r.direction === 'outbound' ? 'sky' : 'muted')}</td>
+      </tr>`).join('');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+loadAll();
+setInterval(loadAll, 15000);
+</script>
+{% endblock %}

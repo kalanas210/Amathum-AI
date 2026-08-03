@@ -429,6 +429,33 @@ function lookupChannelName(uuid: string): string | null {
   }
 }
 
+// Normalise an Asterisk CALLERID(num) to the canonical Sri Lankan local format
+// 0XXXXXXXXX (10 digits). Handles +94 / 0094 / 94 international prefixes and a
+// missing leading 0. Returns "" for withheld/anonymous/foreign/garbage caller
+// IDs so the agent falls back to asking the caller for a number (never guesses).
+function normalizeLkPhone(raw: string): string {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.startsWith("0094")) d = d.slice(4);          // 0094 77... -> 77...
+  else if (d.startsWith("94") && d.length >= 11) d = d.slice(2); // 94 77... -> 77...
+  d = d.replace(/^0+/, "");                            // drop any leading zero(s)
+  if (d.length !== 9) return "";                       // LK national number is 9 digits; anything else = not a clean local number
+  return "0" + d;                                      // 0XXXXXXXXX
+}
+
+// Caller's phone number for this call, captured by the dialplan into
+// <uuid>.cid (see install-callerid.sh). Empty when caller ID is withheld or the
+// number isn't a clean Sri Lankan one — the agent then asks for it as before.
+function lookupCallerNum(uuid: string): string {
+  try {
+    const p = path.join(CHANNEL_REGISTRY_DIR, `${uuid}.cid`);
+    if (!fs.existsSync(p)) return "";
+    return normalizeLkPhone(fs.readFileSync(p, "utf-8"));
+  } catch (_) {
+    return "";
+  }
+}
+
 // ============================================================
 // Hospital booking helpers
 //   - reference ("dummy") directory of doctors/branches/specialties:
@@ -462,17 +489,32 @@ function loadHospitalRef(): HospitalRef {
   return _hospitalRef!;
 }
 
+// Whole-word / phrase match — avoids short terms matching inside unrelated words
+// (e.g. "ENT" must not match "m·ent·al" / "appointm·ent", "ear" not "y·ear").
+// Boundaries are non-ASCII-letters, so English terms embedded in Sinhala/Tamil
+// text still match at the boundary.
+function mentions(text: string, term: string): boolean {
+  const k = (term || "").toLowerCase().trim();
+  if (!k) return false;
+  const esc = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z])${esc}([^a-z]|$)`, "i").test(text);
+}
+
 function resolveSpecialty(ref: HospitalRef, text: string): string | null {
   const t = (text || "").toLowerCase().trim();
   if (!t) return null;
   const direct = ref.specialties.find(
-    (s) => s.name.toLowerCase() === t || t.includes(s.name.toLowerCase())
+    (s) => s.name.toLowerCase() === t || mentions(t, s.name)
   );
   if (direct) return direct.name;
   for (const s of ref.specialties) {
-    if ((s.keywords || []).some((k) => t.includes(k.toLowerCase()))) return s.name;
+    if ((s.keywords || []).some((k) => mentions(t, k))) return s.name;
   }
-  return null;
+  // DEMO: anything we can't map to a specific specialty goes to the GP
+  // (General Medicine) — the caller is always routed to a real doctor, never
+  // turned away. A specific keyword above still wins when one matches.
+  const gp = ref.specialties.find((s) => s.name.toLowerCase() === "general medicine");
+  return gp ? gp.name : null;
 }
 
 function findDoctors(
@@ -499,19 +541,19 @@ function findDoctors(
   return docs;
 }
 
-// Durdans appointment reference, e.g. DUR-AP-482917 — phone-friendly 6 digits,
+// Holton appointment reference, e.g. HOL-AP-482917 — phone-friendly 6 digits,
 // matching the brand the agent reads back. Retry on the off chance the file exists.
 function makeBookingId(): string {
   const dir = path.join(BOOKINGS_DIR, "hospital", "appointments");
   for (let i = 0; i < 50; i++) {
-    const id = "DUR-AP-" + Math.floor(100000 + Math.random() * 900000);
+    const id = "HOL-AP-" + Math.floor(100000 + Math.random() * 900000);
     try {
       if (!fs.existsSync(path.join(dir, `${id}.json`))) return id;
     } catch (_) {
       return id;
     }
   }
-  return "DUR-AP-" + Math.floor(100000 + Math.random() * 900000);
+  return "HOL-AP-" + Math.floor(100000 + Math.random() * 900000);
 }
 
 // Channelling queue position — the patient's number for this doctor's clinic at
@@ -539,6 +581,24 @@ function nextQueueNo(doctor: string, branch: string, date: string): number {
     }
   } catch (_) {}
   return n + 1;
+}
+
+// The doctor's arrival / channelling session start for a booking, so the agent
+// can say "the doctor sees patients from <time>, you are number N". Picks the
+// doctor's earliest slot in the same part of day as the requested time
+// (morning < 12:00, afternoon 12:00–15:59, evening ≥ 16:00).
+function sessionStart(doc: RefDoctor, time: string): string {
+  const slots = (doc.slots || []).slice();
+  const toMin = (t: string) => {
+    const m = String(t).match(/(\d{1,2}):(\d{2})/);
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : -1;
+  };
+  const part = (m: number) => (m < 720 ? 0 : m < 960 ? 1 : 2);
+  const bm = toMin(time);
+  const sorted = slots.slice().sort((a, b) => toMin(a) - toMin(b));
+  if (bm < 0 || !sorted.length) return time || sorted[0] || "";
+  const inPart = sorted.filter((s) => part(toMin(s)) === part(bm));
+  return inPart[0] || sorted[0] || time;
 }
 
 function writeBooking(rec: Record<string, unknown>) {
@@ -621,7 +681,11 @@ function matchTest(query: string): any {
 function upsertPatient(name: string, phone: string, extra?: Record<string, unknown>): string {
   const dir = path.join(BOOKINGS_DIR, "hospital", "patients");
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
-  const norm = (s: string) => String(s || "").replace(/[^0-9+]/g, "");
+  // Canonicalise to the same 0XXXXXXXXX form normalizeLkPhone produces so that a
+  // number stored as "+94712203453" and the same one stored as "0712203453"
+  // dedupe to a single MRN. Fall back to a digits/+ strip for unusual numbers
+  // normalizeLkPhone can't canonicalise (so they still match like-for-like).
+  const norm = (s: string) => normalizeLkPhone(s) || String(s || "").replace(/[^0-9+]/g, "");
   const pn = norm(phone);
   try {
     for (const f of fs.readdirSync(dir)) {
@@ -645,6 +709,106 @@ function upsertPatient(name: string, phone: string, extra?: Record<string, unkno
   return mrn;
 }
 
+// ============================================================
+// Restaurant vertical — thin proxy to the Flask monitor.
+//
+// The QSR ordering tools (menu, promotions, pricing, order lifecycle) are
+// implemented ONCE, in app.py, and exposed on a localhost-only, token-authed
+// endpoint. The bridge does not price anything or write any order record
+// itself: that is what guarantees a phone order and a dashboard order are
+// computed by the same code, and that totals are always recomputed server-side.
+// ============================================================
+const MONITOR_URL = process.env.PBX_MONITOR_URL || "http://127.0.0.1:5051";
+const AGENT_API_FILE = process.env.SAMPATH_AGENT_API_FILE || "/var/lib/sampath-ai/agent-api.json";
+
+const RESTAURANT_TOOLS = new Set([
+  "lookup_customer", "get_menu", "get_promotions", "get_branch_info",
+  "place_food_order", "check_order_status", "cancel_order", "modify_order",
+]);
+
+let _agentToken: { mtime: number; value: string } | null = null;
+function agentToken(): string {
+  try {
+    const st = fs.statSync(AGENT_API_FILE);
+    if (!_agentToken || _agentToken.mtime !== st.mtimeMs) {
+      const j = JSON.parse(fs.readFileSync(AGENT_API_FILE, "utf-8"));
+      _agentToken = { mtime: st.mtimeMs, value: String(j.token || "") };
+    }
+    return _agentToken.value;
+  } catch (_) {
+    return "";
+  }
+}
+
+/** POST one tool call to the monitor. Never throws — a failure comes back as a
+ *  tool result the agent can actually say something sensible about. */
+async function callAgentApi(
+  vertical: string,
+  tool: string,
+  args: Record<string, unknown>,
+  timeoutMs = 6000
+): Promise<any> {
+  const token = agentToken();
+  if (!token) {
+    console.error(`[bridge] no agent API token at ${AGENT_API_FILE}`);
+    return {
+      ok: false, error: "no_token",
+      note: "The ordering system is unavailable. Apologise to the caller and offer to connect them to the branch.",
+    };
+  }
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${MONITOR_URL}/api/agent/${vertical}/${tool}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Agent-Token": token },
+      body: JSON.stringify(args),
+      signal: ctl.signal,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok && !body?.note) {
+      return {
+        ok: false, error: `http_${res.status}`,
+        note: "The ordering system returned an error. Apologise and offer to connect the caller to the branch.",
+      };
+    }
+    return body;
+  } catch (e) {
+    console.error(`[bridge] agent API ${tool} failed:`, (e as Error).message);
+    return {
+      ok: false, error: "unreachable",
+      note: "The ordering system is not responding. Apologise, do NOT promise an order, and offer to connect the caller to the branch.",
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Pre-call CRM lookup, injected into the system prompt so a returning caller is
+ *  greeted by name on the very first turn instead of after a tool round-trip. */
+async function restaurantCallerContext(callerPhone: string): Promise<string> {
+  if (!callerPhone) return "";
+  const r = await callAgentApi("restaurant", "lookup_customer", { _caller_phone: callerPhone }, 3000);
+  if (!r || !r.known) return "";
+  const lines = [
+    "## KNOWN CALLER (already in our customer database — do NOT ask for these again)",
+    `Name: ${r.name || "(not recorded)"}`,
+    `Phone: ${r.phone}`,
+  ];
+  if (r.saved_address) lines.push(`Saved delivery address: ${r.saved_address}`);
+  if (r.order_count) lines.push(`Previous orders with us: ${r.order_count}`);
+  if (Array.isArray(r.recent_orders) && r.recent_orders.length) {
+    lines.push("Recent orders: " + r.recent_orders.map((o: any) => `${o.order_number} ${o.items} (${o.status})`).join("; "));
+  }
+  lines.push(
+    "Greet this caller BY NAME in your opening line. Do NOT ask for their name, phone number or address." +
+    (r.saved_address
+      ? ` Confirm the saved address instead: "Would you like it delivered to ${r.saved_address}?" If they say no, ask for the new address and it will be saved automatically.`
+      : " They have no saved address yet, so ask for one only if the order is for delivery.")
+  );
+  return lines.join("\n");
+}
+
 // Outbound confirm-call context — written by the app before originating, keyed by
 // the same UUID Asterisk passes over AudioSocket on port 9092.
 function loadOutboundContext(uuid: string): any {
@@ -664,39 +828,105 @@ function buildOutboundConfig(ctx: any): AgentConfig {
   const cur = (ctx && ctx.currency) || "Rs";
   let system_prompt: string, greeting_trigger: string, tools: string[];
 
+  // Outbound calls speak the SAME language the patient used on their inbound
+  // call (stored on the record as `language`; defaults to Sinhala, the house
+  // language). The agent still switches if the patient clearly answers in
+  // another language.
+  const LANG_NAME: Record<string, string> = { si: "Sinhala", ta: "Tamil", en: "English" };
+  const lang = (ctx && ctx.language) || "si";
+  const langName = LANG_NAME[lang] || "Sinhala";
+  const langExample =
+    lang === "si"
+      ? ` Example confirmation in Sinhala: "හරි, මම තහවුරු කරගන්නම් — [details]. මේක හරිද?" — NEVER confirm in English when the patient is speaking Sinhala.`
+      : lang === "ta"
+        ? ` Read back and confirm in Tamil; never switch to English when the patient is speaking Tamil.`
+        : "";
+  // Mirror the inbound LANGUAGE rule (hospital-appointment.system.md): the
+  // read-back/confirm step is where the model tends to flip to English because
+  // the data it reads (names, dates, HOL-AP refs, loanwords) is Latin-script.
+  // Judge the PATIENT's language by sentence structure, not by those words.
+  const langLine =
+    ` LANGUAGE — IMPORTANT: Start in ${langName} and keep speaking ${langName} — every question, read-back and confirmation. ` +
+    `Names, doctor names, branches, dates, times and reference numbers (e.g. HOL-AP-######), and loanwords like "appointment", "report" or "branch", are data — NOT a language change, so keep the sentence around them in ${langName} and do NOT flip to English just to say them. ` +
+    `BUT always follow the patient: if they reply in a different language, or ASK you to speak one (e.g. "Sinhalen katha karanna", "speak in Sinhala", "Tamil-il pesunga"), switch to that language IMMEDIATELY and continue the whole call in it — then read back and confirm in that language.` +
+    langExample;
+
   if (kind === "appt_confirm" || kind === "appt_reminder") {
     system_prompt =
-      "You are a polite assistant from a hospital making an OUTBOUND call to confirm or remind a patient about an appointment. Be brief, warm and clear. Detect and speak the patient's language (English / Sinhala / Tamil). Discuss only this appointment.";
+      "You are Nawani, a warm, polite assistant from Holton Hospital making an OUTBOUND call to confirm or remind a patient about an appointment. Be brief, warm and clear." + langLine + " Discuss only this appointment.";
     greeting_trigger =
-      `You have just called ${who}. Greet them, say you are calling from the hospital about their appointment: ${summary}. Ask them to confirm it still suits them. ` +
+      `You have just called ${who}. Greet them in ${langName} as Nawani from Holton Hospital and say you are calling about their appointment: ${summary}. Ask them to confirm it still suits them. ` +
       `If they confirm, call call_outcome with outcome "confirmed". If they want to cancel, outcome "cancelled". If they want a different time, outcome "reschedule" with a note. Then thank them and call end_call.`;
     tools = ["call_outcome", "end_call"];
   } else if (kind === "lab_critical") {
     system_prompt =
-      "You are a careful clinical assistant from a hospital laboratory making an URGENT OUTBOUND call about an important (critical) test result. Be calm, clear and serious. Advise the patient to contact their doctor or come to the hospital promptly. Ask them to repeat back what they should do. Speak their language. Do NOT give detailed medical advice beyond advising prompt follow-up.";
+      "You are Nawani, a careful clinical assistant from the Holton Hospital laboratory making an URGENT OUTBOUND call about an important (critical) test result. Be calm, clear and serious." + langLine + " Advise the patient to contact their doctor or come to the hospital promptly. Ask them to repeat back what they should do. Do NOT give detailed medical advice beyond advising prompt follow-up.";
     greeting_trigger =
-      `You have just called ${who}. Greet them, say you are calling from the hospital laboratory about their test ${summary} (reference ${ref}) and that the result needs prompt attention. Advise them to see their doctor or come to the hospital as soon as possible, and ask them to read back / confirm they understood. ` +
+      `You have just called ${who}. Greet them in ${langName} as Nawani from the Holton Hospital laboratory about their test ${summary} (reference ${ref}) and that the result needs prompt attention. Advise them to see their doctor or come to the hospital as soon as possible, and ask them to read back / confirm they understood. ` +
       `When they acknowledge, call call_outcome with outcome "acknowledged" and a brief note. Then thank them and call end_call.`;
     tools = ["call_outcome", "end_call"];
   } else if (kind === "lab_ready") {
     system_prompt =
-      "You are a polite assistant from a hospital laboratory making an OUTBOUND call to tell a patient their lab results are ready. Be brief and friendly. Speak their language.";
+      "You are Nawani, a polite assistant from the Holton Hospital laboratory making an OUTBOUND call to tell a patient their lab results are ready. Be brief and friendly." + langLine;
     greeting_trigger =
-      `You have just called ${who}. Greet them, say you are calling from the hospital laboratory to let them know their results for ${summary} (reference ${ref}) are ready to collect or be sent. Confirm they heard. ` +
+      `You have just called ${who}. Greet them in ${langName} as Nawani from the Holton Hospital laboratory to let them know their results for ${summary} (reference ${ref}) are ready to collect or be sent. Confirm they heard. ` +
       `Call call_outcome with outcome "confirmed". Then thank them and call end_call.`;
     tools = ["call_outcome", "end_call"];
+  } else if (kind === "order_shipped") {
+    // sales — shipped / out-for-delivery notification (triggered manually from the dashboard)
+    const addr = ctx && ctx.address ? ` to ${ctx.address}` : "";
+    system_prompt =
+      "You are a polite assistant from an online store making an OUTBOUND call to let a customer know their order has been shipped and is on its way." + langLine + " Be brief and friendly. Do not discuss anything unrelated to this delivery.";
+    greeting_trigger =
+      `You have just called ${who}. Greet them in ${langName} and say you are calling from the store to let them know their order ${ref}${summary ? ` (${summary})` : ""} has been shipped and is on its way${addr}. Ask them to confirm someone will be available to receive it, and answer any short question about the delivery. ` +
+      `When they acknowledge, call call_outcome with outcome "acknowledged". If they ask to be delivered at another time, call it with outcome "reschedule" and a short note. Then thank them and call end_call.`;
+    tools = ["call_outcome", "end_call"];
   } else {
-    // sales order_confirm (default — unchanged behaviour)
+    // sales order_confirm
     const total = ctx && ctx.total != null ? `, total ${cur} ${ctx.total}` : "";
     const pay = ctx && ctx.payment ? `, payment ${ctx.payment}` : "";
+    const addr = ctx && ctx.address ? `, for delivery to ${ctx.address}` : "";
     system_prompt =
-      "You are a polite assistant from an online store making an OUTBOUND call to a customer to confirm an order they placed. Be brief, warm and clear. Detect and speak the customer's language (English / Sinhala / Tamil). Do not discuss anything unrelated to this order.";
+      "You are a polite assistant from an online store making an OUTBOUND call to a customer to confirm an order they placed. Be brief, warm and clear." + langLine + " Do not discuss anything unrelated to this order.";
     greeting_trigger =
-      `You have just called ${who}. Greet them, say you are calling from the store to confirm their order ${ref}: ${summary || "their recent order"}${total}${pay}. Read the order back and ask them to confirm it is correct and to confirm the delivery address. ` +
+      `You have just called ${who}. Greet them in ${langName} and say you are calling from the store to confirm their order ${ref}: ${summary || "their recent order"}${total}${pay}${addr}. Read the order back — the items, their name and the delivery address — and ask them to confirm everything is correct. ` +
       `When they confirm, call confirm_order with outcome "confirmed". If they want to cancel, call it with outcome "cancelled". If they want changes or a callback later, call it with outcome "reschedule" and a short note. After that, thank them and call end_call.`;
     tools = ["confirm_order", "end_call"];
   }
   return { ...base, system_prompt, custom_instructions: "", greeting_trigger, retry_greeting_trigger: "", tools_enabled: tools, working_hours: undefined };
+}
+
+// Detect the script of one user utterance so an outbound call can later speak
+// the same language the caller used inbound. Sinhala = U+0D80–0DFF, Tamil =
+// U+0B80–0BFF; anything else (Latin) counts as English. A Sinhala sentence
+// keeps Sinhala script even with English loanwords ("doctor", "appointment"),
+// so the presence of a Sinhala char is a reliable "this turn was Sinhala" cue.
+// Romanized Sinhala: Gemini Live often transcribes spoken Sinhala as Latin text
+// (e.g. "puluwanda", "karanna", "Sinhalen kathaa karanna") which a pure-script
+// check would miscount as English. These tokens almost never occur in genuine
+// English, so their presence marks the turn as Sinhala.
+const ROMANIZED_SI =
+  /\b(puluwan\w*|karann\w*|thiyen\w*|tiyen\w*|kohomada|monaw\w*|kaw?uda|oyal\w*|mage|kenek|tikak|naadda|sinhalen|singlen|sinhala|denna|gann\w*|balann\w*|kiyann\w*)\b/i;
+
+function detectUtteranceLang(text: string): "si" | "ta" | "en" {
+  if (/[඀-෿]/.test(text)) return "si";        // Sinhala script — decisive
+  if (/[஀-௿]/.test(text)) return "ta";        // Tamil script — decisive
+  if (ROMANIZED_SI.test(text)) return "si";   // romanized Sinhala (Gemini Latinizes SL speech)
+  return "en";
+}
+
+// Pick the call's language from the running per-utterance tally. Sinhala is the
+// house default and wins ties / an empty tally.
+function callLanguage(counts?: { si: number; ta: number; en: number }): "si" | "ta" | "en" {
+  const c = counts || { si: 0, ta: 0, en: 0 };
+  // Sinhala/Tamil turns (script OR romanized markers) are a STRONG, reliable
+  // signal; English transcripts on these calls are noisy (greetings, fillers,
+  // and Gemini romanizing Sinhala as Latin), so ANY real Sinhala/Tamil presence
+  // beats a plurality of English turns. Pure-English calls stay English; an
+  // empty tally falls back to the house language, Sinhala.
+  if (c.si > 0 && c.si >= c.ta) return "si";
+  if (c.ta > 0) return "ta";
+  return c.en > 0 ? "en" : "si";
 }
 
 // ============================================================
@@ -708,6 +938,7 @@ interface BridgeState {
   callerUuid: string;
   channelName: string | null;
   callerNum: string;
+  callerPhone: string;   // inbound caller ID, used as the default contact number for restaurant tools
   gemini: GeminiLiveSession | null;
   pendingOutbound: Buffer;
   upsampler: Upsampler8to16;
@@ -723,6 +954,7 @@ interface BridgeState {
   lastFrameAt: number;  // ms; last time we wrote ANY frame to Asterisk
   lastGeminiAudioAt: number;  // ms; last time Gemini sent us audio (0 if never)
   lastTurnCompleteAt: number;  // ms; last time Gemini fired turn_complete
+  langCounts: { si: number; ta: number; en: number };  // per-utterance script tally → outbound language inheritance
 }
 
 function makeHandler(retryMode: boolean, outbound = false) {
@@ -739,6 +971,7 @@ function handleConnection(sock: net.Socket, retryMode: boolean, outbound = false
     callerUuid: "",
     channelName: null,
     callerNum: "",
+    callerPhone: "",
     gemini: null,
     pendingOutbound: Buffer.alloc(0),
     upsampler: new Upsampler8to16(),
@@ -751,6 +984,7 @@ function handleConnection(sock: net.Socket, retryMode: boolean, outbound = false
     lastFrameAt: Date.now(),
     lastGeminiAudioAt: 0,
     lastTurnCompleteAt: 0,
+    langCounts: { si: 0, ta: 0, en: 0 },
   };
 
   // AudioSocket keepalive: Asterisk's app_audiosocket drops the connection
@@ -839,10 +1073,20 @@ function handleConnection(sock: net.Socket, retryMode: boolean, outbound = false
         state.channelName = lookupChannelName(formattedUuid);
         console.log(`[bridge] channel = ${state.channelName || "(unknown)"}`);
 
+        // Caller's own phone number (from caller ID), offered to the agent as the
+        // contact number for a booking. Inbound only — on outbound the CALLERID is
+        // OUR line, not the customer's. Kept as a LOCAL (not state.callerNum) on
+        // purpose: state.callerNum keys the customer-info store, and we don't want
+        // an unverified/spoofable caller ID silently becoming that key.
+        const callerPhone = outbound ? "" : lookupCallerNum(formattedUuid);
+        state.callerPhone = callerPhone || "";
+        console.log(`[bridge] caller number = ${callerPhone || "(withheld/unknown)"}`);
+
         appendSessionEvent(formattedUuid, {
           type: "session_open",
           mode: outbound ? "outbound" : retryMode ? "retry" : "primary",
           channel: state.channelName,
+          caller_num: callerPhone || undefined,
         });
 
         let cfg: AgentConfig;
@@ -856,11 +1100,28 @@ function handleConnection(sock: net.Socket, retryMode: boolean, outbound = false
           cfg = loadAgentConfig();
         }
 
+        // Restaurant flow: resolve the caller against the CRM BEFORE the session
+        // opens, so a returning customer is greeted by name on the first turn
+        // rather than after a tool round-trip (spec flows 2 and 7).
+        let extraContext = "";
+        if (!outbound && (cfg.tools_enabled || []).includes("place_food_order")) {
+          try {
+            extraContext = await restaurantCallerContext(callerPhone);
+            if (extraContext) {
+              appendSessionEvent(formattedUuid, { type: "crm_hit", vertical: "restaurant" });
+            }
+          } catch (e) {
+            console.warn("[bridge] restaurant CRM prefetch failed:", (e as Error).message);
+          }
+        }
+
         try {
           state.gemini = await createGeminiLiveSession(
             cfg,
             formattedUuid,
-            retryMode
+            retryMode,
+            callerPhone,
+            extraContext
           );
           console.log("[bridge] Gemini session open");
           appendSessionEvent(formattedUuid, {
@@ -883,6 +1144,8 @@ function handleConnection(sock: net.Socket, retryMode: boolean, outbound = false
           state.gemini.onTranscript((text, role) => {
             const trimmed = (text || "").trim();
             if (!trimmed) return;
+            // Tally the caller's language so an outbound follow-up call speaks it.
+            if (role === "user") state.langCounts[detectUtteranceLang(trimmed)]++;
             console.log(`[bridge] ${role}: ${trimmed.slice(0, 160)}`);
             appendSessionEvent(formattedUuid, {
               type: "transcript",
@@ -1005,6 +1268,36 @@ async function handleToolCall(
   });
 
   try {
+    // Restaurant vertical: every tool is served by the monitor's agent API, so
+    // the menu, the promotions and the order totals have exactly one source.
+    if (RESTAURANT_TOOLS.has(name)) {
+      // _caller_phone is the number the call is actually coming from. It is set
+      // here, AFTER the spread, so a model-supplied value can never override it
+      // — the server uses it to decide whose CRM record may be read and whose
+      // order may be cancelled.
+      const payload: Record<string, unknown> = {
+        ...args,
+        _call_uuid: uuid,
+        _caller_phone: state.callerPhone || "",
+      };
+      // Contact number defaults to the caller ID rather than making the caller
+      // dictate a number they already dialled from.
+      if ((name === "place_food_order" || name === "check_order_status")
+          && !String(args.phone || "").trim() && state.callerPhone) {
+        payload.phone = state.callerPhone;
+      }
+      const result = await callAgentApi("restaurant", name, payload);
+      appendSessionEvent(uuid, {
+        type: result?.ok === false ? "tool_error" : "tool_result",
+        name,
+        ok: result?.ok !== false,
+        order_number: result?.order_number,
+        error: result?.error,
+      });
+      state.gemini?.sendToolResponse(id, name, result);
+      return;
+    }
+
     if (name === "find_sampath_branch") {
       const query = String(args.query || "").trim();
       const matches = findBranches(query, 4).map(formatBranchForAgent);
@@ -1227,7 +1520,10 @@ async function handleToolCall(
     if (name === "book_appointment") {
       const ref = loadHospitalRef();
       const patient = String(args.patient_name || "").trim();
-      const phone = String(args.phone || "").trim();
+      // Canonicalise to 0XXXXXXXXX so the stored number, the customer-facing
+      // readback and the patient-registry dedup all use one form (falls back to
+      // the raw value for unusual-but-valid numbers normalizeLkPhone won't touch).
+      const phone = normalizeLkPhone(String(args.phone || "").trim()) || String(args.phone || "").trim();
       const date = String(args.date || "").trim();
       const time = String(args.time || "").trim();
       const reason = String(args.reason || "").trim();
@@ -1270,9 +1566,11 @@ async function handleToolCall(
       }
       const bid = makeBookingId();
       const queueNo = nextQueueNo(doc.name, branch, date);
+      const sessionTime = sessionStart(doc, time);
       const rec = {
         id: bid, ref: bid, patient, phone, doctor: doc.name, specialty: doc.specialty,
-        branch, date, time, reason, type: "Consultation", fee: doc.fee || 0, queue_no: queueNo,
+        branch, date, time, reason, type: "Consultation", fee: doc.fee || 0,
+        queue_no: queueNo, session_time: sessionTime, language: callLanguage(state.langCounts),
         status: "booked", source: "AI call", paid: false, call_uuid: uuid, created: nowIso(),
       };
       try {
@@ -1286,12 +1584,12 @@ async function handleToolCall(
       upsertPatient(patient, phone);
       appendSessionEvent(uuid, {
         type: "booking_created", booking_id: bid, patient,
-        doctor: doc.name, specialty: doc.specialty, branch, date, time, queue_no: queueNo,
+        doctor: doc.name, specialty: doc.specialty, branch, date, time, queue_no: queueNo, session_time: sessionTime,
       });
       state.gemini?.sendToolResponse(id, name, {
         ok: true, booking_id: bid, doctor: doc.name, specialty: doc.specialty,
-        branch, date, time, fee: doc.fee || 0, queue_no: queueNo,
-        note: `Appointment confirmed. Read this back to the caller: ${patient} with ${doc.name} (${doc.specialty}) at ${branch} branch on ${date} at ${time}, consultation fee Rs ${doc.fee || 0}. Appointment number ${bid}. Queue number ${queueNo}. A confirmation SMS will follow.`,
+        branch, date, time, fee: doc.fee || 0, queue_no: queueNo, session_time: sessionTime,
+        note: `Appointment confirmed. Read this back to the caller in their language: ${patient}, with ${doc.name} (${doc.specialty}) at the ${branch} branch on ${date}. Their appointment number is ${bid}. They are number ${queueNo} in the queue. The doctor's channelling session starts at ${sessionTime} and patients are seen in queue order. Consultation fee Rs ${doc.fee || 0}. A confirmation SMS will follow.`,
       });
       return;
     }
@@ -1299,7 +1597,8 @@ async function handleToolCall(
     if (name === "book_reservation") {
       const ref = loadRef("reservations");
       const guest = String(args.guest_name || "").trim();
-      const phone = String(args.phone || "").trim();
+      // Canonicalise to 0XXXXXXXXX (matches book_appointment); falls back to raw.
+      const phone = normalizeLkPhone(String(args.phone || "").trim()) || String(args.phone || "").trim();
       const party = Math.max(0, parseInt(String(args.party_size || "0"), 10) || 0);
       const date = String(args.date || "").trim();
       const time = String(args.time || "").trim();
@@ -1374,7 +1673,8 @@ async function handleToolCall(
     if (name === "place_order") {
       const ref = loadRef("sales");
       const customer = String(args.customer_name || "").trim();
-      const phone = String(args.phone || "").trim();
+      // Canonicalise to 0XXXXXXXXX (matches book_appointment); falls back to raw.
+      const phone = normalizeLkPhone(String(args.phone || "").trim()) || String(args.phone || "").trim();
       const address = String(args.address || "").trim();
       const payRaw = String(args.payment || "COD").trim().toLowerCase();
       const qty = Math.max(1, parseInt(String(args.quantity || "1"), 10) || 1);
@@ -1448,7 +1748,8 @@ async function handleToolCall(
     if (name === "order_lab_test") {
       const t = matchTest(String(args.test || ""));
       const patient = String(args.patient_name || "").trim();
-      const phone = String(args.phone || "").trim();
+      // Canonicalise to 0XXXXXXXXX (matches book_appointment); falls back to raw.
+      const phone = normalizeLkPhone(String(args.phone || "").trim()) || String(args.phone || "").trim();
       const pr = String(args.priority || "Routine");
       const priority = /stat/i.test(pr) ? "STAT" : /urgent/i.test(pr) ? "Urgent" : "Routine";
       if (!validName(patient) || !validPhone(phone)) {
@@ -1465,7 +1766,7 @@ async function handleToolCall(
         id: bid, ref: bid, accession: makeId("AC"), patient, phone, mrn,
         test_code: t.code, test_name: t.name, department: t.department, specimen: t.specimen,
         panel: (t.analytes || []).length > 1, priority, cost: t.price || 0,
-        status: "ordered", ordered_by: "AI agent", source: "AI call",
+        status: "ordered", ordered_by: "AI agent", source: "AI call", language: callLanguage(state.langCounts),
         ordered_at: nowIso(), results: [], critical: false, created: nowIso(),
       };
       try {
@@ -1501,6 +1802,11 @@ async function handleToolCall(
           } else if (kind === "lab_ready" || kind === "lab_critical") {
             o.status = "delivered"; o.delivered_at = nowIso(); o.delivered_via = "AI call";
             if (kind === "lab_critical") { o.critical_ack = (outcome === "acknowledged" || outcome === "confirmed"); o.critical_ack_at = nowIso(); }
+          } else if (kind === "order_shipped") {
+            // shipped-notification call — record the acknowledgement; do NOT change status (stays "shipped")
+            o.ship_notified = (outcome === "acknowledged" || outcome === "confirmed");
+            o.ship_notified_at = nowIso();
+            o.ship_call_outcome = outcome;
           }
           o.call_outcome = outcome; if (note) o.call_note = note; o.called_at = nowIso(); o.called_by = "AI outbound";
           const tmp = file + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(o, null, 2)); fs.renameSync(tmp, file);
@@ -1555,6 +1861,9 @@ function close(state: BridgeState, reason: string) {
     appendSessionEvent(formatted, { type: "session_close", reason });
     try {
       fs.unlinkSync(path.join(CHANNEL_REGISTRY_DIR, `${formatted}.chan`));
+    } catch (_) {}
+    try {
+      fs.unlinkSync(path.join(CHANNEL_REGISTRY_DIR, `${formatted}.cid`));
     } catch (_) {}
     try {
       fs.unlinkSync(path.join(OUTBOUND_DIR, `${formatted}.json`));

@@ -31,7 +31,7 @@ def load_catalog():
     try:
         return json.load(CATALOG_FILE.open())
     except Exception:
-        return {'currency': 'Rs', 'store_name': 'Ryzera Store', 'products': []}
+        return {'currency': 'Rs', 'store_name': 'Naxter Store', 'products': []}
 
 
 def _reserved_by_sku():
@@ -97,7 +97,7 @@ def rate_ok(ip, limit=6, window=60):
 @app.route('/')
 def store():
     cat = load_catalog()
-    return render_template('store.html', store_name=cat.get('store_name', 'Ryzera Store'),
+    return render_template('store.html', store_name=cat.get('store_name', 'Naxter Store'),
                            tagline=cat.get('store_tagline', ''), currency=cat.get('currency', 'Rs'))
 
 

@@ -1,0 +1,19 @@
+{
+  "name": "sampath-ai-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "start": "tsx bridge.ts" },
+  "dependencies": {
+    "@google/genai": "^1.49.0",
+    "dotenv": "^17.4.1",
+    "uuid": "^13.0.0",
+    "ws": "^8.20.0",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5"
+  }
+}

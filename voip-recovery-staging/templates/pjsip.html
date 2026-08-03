@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}PJSIP config{% endblock %}
+{% block page_title %}PJSIP configuration{% endblock %}
+{% block page_subtitle %}{{ pjsip_conf }} — SIP endpoints, AORs, transport{% endblock %}
+
+{% block page_actions %}
+<button onclick="save()" class="text-sm px-3 py-1.5 bg-primary text-primary-fg rounded-md hover:opacity-90 flex items-center gap-1.5 transition-opacity">
+  <i data-lucide="save" class="w-3.5 h-3.5"></i> Save & reload
+</button>
+<button onclick="apiPost('/api/reload/pjsip').then(j=>toast('Reloaded'))" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reload only
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+    <div>
+      <h3 class="text-sm font-semibold text-fg">{{ pjsip_conf.split('/')[-1] }}</h3>
+      <p class="text-[11px] text-muted-fg mt-0.5">Modifies the trunk endpoint and softphone extensions — saved with automatic backup{% if flavour == 'freepbx' %} — this box is FreePBX, so the editor targets the <code>_custom</code> include; the generated <code>pjsip.conf</code> is rewritten by every <code>fwconsole reload</code>{% endif %}</p>
+    </div>
+    <button onclick="load()" class="text-xs text-muted-fg hover:text-fg">Discard changes</button>
+  </div>
+  <textarea id="editor" spellcheck="false" class="w-full h-[600px] font-mono text-xs p-4 border-0 resize-none focus:outline-none" style="background:hsl(var(--code-bg));color:hsl(var(--code-fg))">Loading…</textarea>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function load(){
+  const r = await fetch('/api/config/pjsip');
+  document.getElementById('editor').value = await r.text();
+}
+async function save(){
+  const content = document.getElementById('editor').value;
+  const r = await apiPost('/api/config/pjsip', {content});
+  if (r.ok){
+    toast('Saved (backup: '+r.backup+')');
+    await apiPost('/api/reload/pjsip');
+    toast('PJSIP reloaded');
+  } else toast('Error: '+(r.error||'unknown'), 'error');
+}
+load();
+</script>
+{% endblock %}

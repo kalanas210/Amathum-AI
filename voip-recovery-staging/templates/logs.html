@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block page_title %}Asterisk log{% endblock %}
+{% block page_subtitle %}/var/log/asterisk/messages.log — live tail with grep & colorization{% endblock %}
+
+{% block page_actions %}
+<select id="lines" class="text-sm border border-border rounded-md px-2 py-1.5 bg-card text-fg">
+  <option value="100">100 lines</option><option value="200" selected>200 lines</option><option value="500">500 lines</option><option value="1000">1000 lines</option>
+</select>
+<div class="relative">
+  <i data-lucide="search" class="w-3.5 h-3.5 text-muted-fg absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+  <input id="grep" placeholder="grep…" class="text-sm border border-border rounded-md pl-7 pr-2.5 py-1.5 w-40">
+</div>
+<label class="text-xs text-muted-fg flex items-center gap-1.5 px-2 py-1.5"><input type="checkbox" id="autoref" checked class="accent-primary"> Auto-refresh</label>
+{% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <pre id="log" class="term h-[calc(100vh-220px)] overflow-y-auto m-0 rounded-none border-0">Loading…</pre>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let timer;
+async function refresh(){
+  setUpdatedAt();
+  const n = document.getElementById('lines').value;
+  const g = document.getElementById('grep').value.toLowerCase();
+  const r = await apiGet('/api/log?lines='+n);
+  let text = r.text || '';
+  if (g) text = text.split('\n').filter(l => l.toLowerCase().includes(g)).join('\n');
+  // Escape HTML then add coloring
+  text = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  text = text.replace(/\b(ERROR)\b/g, '<span style="color:#f43f5e;font-weight:600">$1</span>');
+  text = text.replace(/\b(WARNING)\b/g, '<span style="color:#f59e0b;font-weight:600">$1</span>');
+  text = text.replace(/\b(NOTICE)\b/g, '<span style="color:#0ea5e9;font-weight:600">$1</span>');
+  const el = document.getElementById('log');
+  const wasBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+  el.innerHTML = text;
+  if (wasBottom) el.scrollTop = el.scrollHeight;
+}
+function loop(){
+  clearInterval(timer);
+  if (document.getElementById('autoref').checked) timer = setInterval(refresh, 3000);
+}
+['lines','grep'].forEach(id=>document.getElementById(id).addEventListener('input', refresh));
+document.getElementById('autoref').addEventListener('change', loop);
+refresh(); loop();
+</script>
+{% endblock %}

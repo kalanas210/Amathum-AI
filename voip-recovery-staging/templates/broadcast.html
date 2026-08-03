@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}Broadcast{% endblock %}
+{% block page_title %}Audio broadcast call{% endblock %}
+{% block page_subtitle %}Dial a number, play a chosen audio file or a TTS script, hang up automatically{% endblock %}
+
+{% block content %}
+<div class="grid lg:grid-cols-3 gap-6">
+
+  <div class="lg:col-span-2 space-y-6">
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border">
+        <h3 class="text-sm font-semibold text-fg">New broadcast</h3>
+        <p class="text-xs text-muted-fg mt-0.5">Asterisk dials the number. On answer, plays your chosen audio. Then hangs up. The whole call is recorded.</p>
+      </div>
+
+      <div class="p-5 space-y-5">
+
+        <!-- FROM (caller ID) -->
+        <div>
+          <label class="block text-xs font-semibold text-fg uppercase tracking-wider mb-2">📞 FROM — Caller ID</label>
+          <input id="from" type="text" value="0114794050"
+            class="w-full px-3 py-2 text-sm border border-border rounded-md font-mono">
+        </div>
+
+        <!-- TO -->
+        <div>
+          <label class="block text-xs font-semibold text-fg uppercase tracking-wider mb-2">📱 TO — Destination</label>
+          <input id="to" type="text" placeholder="0779190005"
+            class="w-full px-3 py-2 text-sm border border-border rounded-md font-mono">
+        </div>
+
+        <!-- Audio source toggle -->
+        <div>
+          <label class="block text-xs font-semibold text-fg uppercase tracking-wider mb-2">🎵 Audio source</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="border border-border rounded-md p-3 cursor-pointer hover:bg-card-hover transition-colors has-[:checked]:border-fg has-[:checked]:bg-accent">
+              <input type="radio" name="source" value="file" checked class="sr-only">
+              <div class="flex items-start gap-2.5">
+                <i data-lucide="file-audio" class="w-4 h-4 mt-0.5 text-muted-fg"></i>
+                <div>
+                  <div class="text-sm font-medium text-fg">Existing audio file</div>
+                  <div class="text-[11px] text-muted-fg mt-0.5">Pick from /var/lib/asterisk/sounds/custom/</div>
+                </div>
+              </div>
+            </label>
+            <label class="border border-border rounded-md p-3 cursor-pointer hover:bg-card-hover transition-colors has-[:checked]:border-fg has-[:checked]:bg-accent">
+              <input type="radio" name="source" value="tts" class="sr-only">
+              <div class="flex items-start gap-2.5">
+                <i data-lucide="sparkles" class="w-4 h-4 mt-0.5 text-muted-fg"></i>
+                <div>
+                  <div class="text-sm font-medium text-fg">TTS script (Polly)</div>
+                  <div class="text-[11px] text-muted-fg mt-0.5">Type text, Matthew neural voice</div>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- File picker (visible when source=file) -->
+        <div id="row-file" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-fg uppercase tracking-wider mb-2">Select audio file</label>
+            <select id="audio-file" class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card font-mono">
+              <option value="">— loading —</option>
+            </select>
+            <div class="flex items-center gap-2 mt-2">
+              <button type="button" onclick="previewFile()" class="text-xs px-2.5 py-1.5 border border-border rounded-md hover:bg-card-hover flex items-center gap-1.5">
+                <i data-lucide="play" class="w-3 h-3"></i> Preview
+              </button>
+              <audio id="file-preview" controls preload="none" class="h-7" style="max-width:260px;display:none"></audio>
+            </div>
+          </div>
+
+          <!-- Inline upload widget -->
+          <details class="border border-border rounded-md bg-bg">
+            <summary class="px-4 py-2.5 cursor-pointer text-xs font-medium text-fg flex items-center gap-2 hover:bg-card-hover">
+              <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+              Upload new audio file
+              <span class="text-[11px] text-muted-fg ml-auto">WAV, MP3, M4A, OGG, FLAC · auto-converts to 8 kHz PCM</span>
+            </summary>
+            <div class="px-4 pb-4 pt-2 space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-fg mb-1">File</label>
+                  <input type="file" id="upload-file" accept=".wav,.mp3,.m4a,.ogg,.flac,.aac"
+                    class="block text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-primary file:text-primary-fg file:text-xs file:font-medium hover:file:opacity-90">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-fg mb-1">Save as (optional)</label>
+                  <input type="text" id="upload-name" placeholder="auto from filename"
+                    class="w-full px-2.5 py-1.5 text-xs border border-border rounded-md bg-card font-mono">
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <button id="upload-btn" type="button" onclick="uploadFile()"
+                  class="px-3 py-1.5 bg-primary text-primary-fg rounded-md text-xs font-medium hover:opacity-90 flex items-center gap-1.5">
+                  <i data-lucide="check" class="w-3 h-3"></i> Upload + use
+                </button>
+                <span id="upload-status" class="text-[11px]"></span>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- TTS script (visible when source=tts) -->
+        <div id="row-tts" style="display:none">
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-xs font-semibold text-fg uppercase tracking-wider">Script</label>
+            <span class="text-[11px] text-muted-fg" id="tts-chars">0 chars</span>
+          </div>
+          <textarea id="broadcast-text" rows="4" placeholder="Hello, this is an automated message from Naxter A I Solutions..."
+            class="w-full px-3 py-2 text-sm border border-border rounded-md bg-card resize-none"></textarea>
+          <div class="grid grid-cols-2 gap-3 mt-2">
+            <select id="tts-voice" class="text-xs px-2 py-1.5 border border-border rounded-md bg-card"></select>
+            <select id="tts-engine" class="text-xs px-2 py-1.5 border border-border rounded-md bg-card">
+              <option value="neural">Neural (high quality)</option>
+              <option value="standard">Standard</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2 mt-2">
+            <button type="button" onclick="previewTts()" class="text-xs px-2.5 py-1.5 border border-border rounded-md hover:bg-card-hover flex items-center gap-1.5">
+              <i data-lucide="play" class="w-3 h-3"></i> Preview
+            </button>
+            <audio id="tts-preview" controls preload="none" class="h-7" style="max-width:240px;display:none"></audio>
+            <span id="tts-status" class="text-[11px] text-muted-fg"></span>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex items-center gap-3 pt-3 border-t border-border">
+          <button id="dial-btn" onclick="dial()" class="px-5 py-2.5 bg-emerald-fg text-white text-sm font-semibold rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <i data-lucide="megaphone" class="w-4 h-4"></i> Send broadcast
+          </button>
+          <button onclick="if(confirm('Hang up ALL active channels?\n\nThis drops every call in progress on the PBX, including live AI agent calls with real customers.')) apiPost('/api/hangup-all').then(j=>toast('Hangup sent'))" class="px-4 py-2.5 text-sm border border-rose-fg/30 bg-rose-bg text-rose-fg rounded-md hover:opacity-80 flex items-center gap-2">
+            <i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Hang up all
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Last response</h3></div>
+      <pre id="response" class="term m-4 min-h-[60px]">(no broadcast yet)</pre>
+    </div>
+  </div>
+
+  <div class="space-y-6">
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-fg">Active channels</h3>
+        <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-fg animate-pulse"></span><span class="text-[11px] text-muted-fg">Live</span></div>
+      </div>
+      <pre id="channels" class="term m-4 max-h-60 overflow-y-auto text-[10px]">Loading…</pre>
+    </div>
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-fg">Latest recordings</h3>
+        <a href="/recordings" class="text-xs text-muted-fg hover:text-fg flex items-center gap-1">All <i data-lucide="arrow-right" class="w-3 h-3"></i></a>
+      </div>
+      <ul id="latest-recs" class="divide-y divide-border text-sm">
+        <li class="px-5 py-3 text-muted-fg">Loading…</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Source toggle
+function syncSource(){
+  const v = document.querySelector('input[name="source"]:checked').value;
+  document.getElementById('row-file').style.display = v === 'file' ? '' : 'none';
+  document.getElementById('row-tts').style.display = v === 'tts' ? '' : 'none';
+}
+document.querySelectorAll('input[name="source"]').forEach(r => r.addEventListener('change', syncSource));
+syncSource();
+
+// Char counter
+document.getElementById('broadcast-text').addEventListener('input', e =>
+  document.getElementById('tts-chars').textContent = e.target.value.length + ' chars');
+
+// Load sound files for the picker
+async function loadFiles(){
+  const sel = document.getElementById('audio-file');
+  const sounds = await apiGet('/api/sounds');
+  const wavs = sounds.filter(s => s.name.endsWith('.wav') && s.dir.startsWith('/var/lib'));
+  if (!wavs.length) { sel.innerHTML = '<option value="">(no audio files — upload one on Sounds page)</option>'; return; }
+  sel.innerHTML = wavs.map(s => {
+    const playName = 'custom/' + s.name.replace(/\.wav$/, '');
+    return `<option value="${playName}" data-url="/api/sounds/download/${s.name}">${s.name} · ${fmtBytes(s.size)}</option>`;
+  }).join('');
+}
+loadFiles();
+
+async function loadVoices(){
+  try {
+    const voices = await apiGet('/api/tts/voices');
+    document.getElementById('tts-voice').innerHTML = voices.map(v =>
+      `<option value="${v.id}" ${v.id==='Matthew'?'selected':''}>${v.id} · ${v.gender} · ${v.language}</option>`).join('');
+  } catch(e) {}
+}
+loadVoices();
+
+function previewFile(){
+  const sel = document.getElementById('audio-file');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.dataset.url) return;
+  const a = document.getElementById('file-preview');
+  a.src = opt.dataset.url;
+  a.style.display = '';
+  a.play().catch(()=>{});
+}
+
+async function uploadFile(){
+  const fi = document.getElementById('upload-file');
+  const nameInput = document.getElementById('upload-name');
+  const status = document.getElementById('upload-status');
+  const btn = document.getElementById('upload-btn');
+  if (!fi.files.length) {
+    status.innerHTML = '<span class="text-rose-fg">Pick a file first</span>'; return;
+  }
+  const file = fi.files[0];
+  const sizeMB = file.size / 1024 / 1024;
+  if (sizeMB > 5) {
+    status.innerHTML = `<span class="text-rose-fg">File too large (${sizeMB.toFixed(1)} MB, max 5)</span>`; return;
+  }
+  status.innerHTML = `<span class="text-muted-fg">Uploading + converting…</span>`;
+  btn.disabled = true;
+  const fd = new FormData();
+  fd.append('file', file);
+  if (nameInput.value.trim()) fd.append('name', nameInput.value.trim());
+  const r = await fetch('/api/sounds/upload', {method:'POST', body: fd});
+  const j = await r.json();
+  btn.disabled = false;
+  if (!j.ok) {
+    status.innerHTML = `<span class="text-rose-fg">${j.error || 'upload failed'}</span>`;
+    return;
+  }
+  status.innerHTML = `<span class="text-emerald-fg">✓ ${j.filename} (${fmtBytes(j.size)})</span>`;
+  // Reload picker and auto-select the new file
+  await loadFiles();
+  const sel = document.getElementById('audio-file');
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === j.play_name) { sel.selectedIndex = i; break; }
+  }
+  // Reset upload form for next time
+  fi.value = ''; nameInput.value = '';
+  toast(`Uploaded ${j.filename} — now selected`);
+}
+
+async function previewTts(){
+  const text = document.getElementById('broadcast-text').value.trim();
+  const voice = document.getElementById('tts-voice').value;
+  const engine = document.getElementById('tts-engine').value;
+  const status = document.getElementById('tts-status');
+  if (!text) { status.innerHTML = '<span class="text-rose-fg">empty</span>'; return; }
+  status.textContent = 'Synthesizing…';
+  const r = await apiPost('/api/tts/preview', {text, voice, engine});
+  if (r.error) { status.innerHTML = '<span class="text-rose-fg">'+r.error+'</span>'; return; }
+  const a = document.getElementById('tts-preview');
+  a.src = r.wav_url; a.style.display = ''; a.play().catch(()=>{});
+  status.innerHTML = `<span class="text-emerald-fg">✓ ${r.duration_s}s · ${r.chars} chars</span>`;
+}
+
+async function dial(){
+  const btn = document.getElementById('dial-btn');
+  const respEl = document.getElementById('response');
+  const to = document.getElementById('to').value.trim();
+  const from = document.getElementById('from').value.trim();
+  const src = document.querySelector('input[name="source"]:checked').value;
+  const payload = {to, from, action: 'play_custom'};
+  if (src === 'file') {
+    payload.audio_file = document.getElementById('audio-file').value;
+  } else {
+    payload.broadcast_text = document.getElementById('broadcast-text').value.trim();
+    payload.voice = document.getElementById('tts-voice').value;
+    payload.engine = document.getElementById('tts-engine').value;
+  }
+  if (!to) { toast('Enter a TO number', 'error'); return; }
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Sending…'; lucide.createIcons();
+  respEl.textContent = `[${fmtTime(new Date())}] Broadcasting to ${to}…`;
+  const r = await apiPost('/api/make-call', payload);
+  respEl.textContent = JSON.stringify(r, null, 2);
+  if (r.ok) toast(`Broadcast queued → ${to}`); else toast('Failed: '+(r.error||'unknown'),'error');
+  btn.disabled = false; btn.innerHTML = '<i data-lucide="megaphone" class="w-4 h-4"></i> Send broadcast'; lucide.createIcons();
+  refresh();
+}
+
+async function refresh(){
+  setUpdatedAt();
+  const ch = await apiGet('/api/channels');
+  document.getElementById('channels').textContent = ch.text;
+  const recs = await apiGet('/api/recordings');
+  document.getElementById('latest-recs').innerHTML = recs.length
+    ? recs.slice(0,5).map(r => `<li class="px-5 py-2.5 hover:bg-card-hover">
+        <div class="text-xs"><code>${esc(r.from)}</code> → <code>${esc(r.to)}</code></div>
+        <div class="text-[11px] text-muted-fg mt-0.5 font-mono">${r.date} ${r.time} · ${r.duration_s}s · ${fmtBytes(r.size)}</div>
+      </li>`).join('')
+    : '<li class="px-5 py-3 text-muted-fg text-sm">No recordings yet</li>';
+  lucide.createIcons();
+}
+refresh();
+setInterval(refresh, 4000);
+</script>
+{% endblock %}

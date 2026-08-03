@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.label }}{% endblock %}
+{% block page_title %}<span id="page-title-text">{{ meta.label }}</span>{% endblock %}
+{% block page_subtitle %}{{ meta.desc }}{% endblock %}
+
+{% block page_actions %}
+<button onclick="IndustryApp.exportCurrent()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+</button>
+<button id="btn-reset" onclick="IndustryApp.resetData()" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors" title="Restore the dummy demo data to its original state">
+  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset demo data
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- Mode banner — deliberately empty. industry-engine.js fills it in ("live data"
+     or "demo workspace") once the vertical config has loaded; hard-coding the
+     demo text here flashed a false "no live database connected" claim on every
+     load of a live dashboard. -->
+<div id="demo-banner" class="hidden"></div>
+
+<!-- tab bar -->
+<div class="border-b border-border flex items-center gap-1 overflow-x-auto" id="ind-tabs"></div>
+
+<!-- view -->
+<div id="ind-view" class="space-y-6"><div class="text-sm text-muted-fg py-10 text-center">Loading…</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/data/{{ industry }}.js?v=1"></script>
+<script src="/static/industry-engine.js?v=1"></script>
+<script>IndustryApp.boot('{{ industry }}');</script>
+{% endblock %}

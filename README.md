@@ -187,7 +187,16 @@ tested and demoed on its own.
 ryzera/
 ├── voip-recovery-staging/          ── the telephony + AI call platform
 │   ├── bridge.ts                   AudioSocket ⇄ Gemini Live bridge (Node/TS)
+│   ├── src/lib/                    bridge internals
+│   │   ├── gemini-live.ts          Gemini Live WebSocket client (audio + tool calls)
+│   │   ├── agent-config.ts         flow/persona loader, working-hours model
+│   │   ├── sampath-data.ts         live branch + forex lookup with background refresh
+│   │   └── memory.ts               per-caller memory store
+│   ├── package.json · tsconfig.json   bridge dependencies
+│   ├── agent-config.example.json   example persona config (copy & edit)
 │   ├── app.py                      Naxter PBX Monitor — Flask admin, 96 routes
+│   ├── templates/ · static/        the admin UI (26 pages + assets)
+│   ├── seeds/                      starter flow personas
 │   ├── asterisk/ai-outbound.conf   dialplan context for outbound AI calls
 │   ├── flows/                      call-flow / persona editor (v1 + v2)
 │   │   ├── patches/                agent-config, gemini-live, extensions.conf patch
@@ -314,11 +323,12 @@ exten => s,1,Answer()
 **b. The AI bridge**
 
 ```bash
-sudo mkdir -p /opt/sampath-ai && sudo cp voip-recovery-staging/bridge.ts /opt/sampath-ai/
-cd /opt/sampath-ai && sudo npm install
+cd voip-recovery-staging
+npm install
+cp agent-config.example.json /var/lib/sampath-ai/agent-config.json   # then edit it
 ```
 
-`/opt/sampath-ai/.env`:
+Create `voip-recovery-staging/.env` (or `/opt/sampath-ai/.env` for the systemd install):
 
 ```bash
 GEMINI_API_KEY=your_key_here
@@ -337,7 +347,8 @@ CALL_WEBHOOK_URL=
 CALL_WEBHOOK_SECRET=
 ```
 
-Run it: `npx tsx bridge.ts` (or install the `sampath-ai` systemd unit — §9).
+Run it straight from the repo: `npx tsx bridge.ts` (or install the `sampath-ai`
+systemd unit — §9).
 The bridge creates every directory above on boot and logs three listeners:
 
 ```
@@ -350,8 +361,12 @@ The bridge creates every directory above on boot and logs three listeners:
 
 ```bash
 pip install flask werkzeug boto3
-sudo bash voip-recovery-staging/install.sh          # installs to /opt/pbx-monitor, port 5051
+python voip-recovery-staging/app.py                 # dev, port 5051
+# or, for the systemd install:
+sudo bash voip-recovery-staging/install.sh          # installs to /opt/pbx-monitor
 ```
+
+The `templates/` and `static/` folders next to `app.py` are the full admin UI (26 pages).
 
 AMI credentials go in `/opt/pbx-monitor/instance/ami.json` (`{"user": "...", "secret": "..."}`) —
 **the bridge reads the same file**, so configure it once. Users live in

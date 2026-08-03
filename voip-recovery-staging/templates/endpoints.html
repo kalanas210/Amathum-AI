@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Endpoints{% endblock %}
+{% block page_title %}PJSIP endpoints{% endblock %}
+{% block page_subtitle %}Softphone extensions and trunk endpoints{% endblock %}
+
+{% block page_actions %}
+{% if 'config' in role_perms %}
+<button onclick="apiPost('/api/reload/pjsip').then(j=>{toast('PJSIP reloaded'); refresh();})" class="text-sm px-3 py-1.5 border border-border bg-card text-fg rounded-md hover:bg-card-hover flex items-center gap-1.5 transition-colors">
+  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reload PJSIP
+</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="grid md:grid-cols-2 gap-4">
+  <div class="border border-border rounded-xl bg-card overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Endpoints</h3></div>
+    <pre class="term m-4" id="endpoints-text">Loading…</pre>
+  </div>
+  <div class="border border-border rounded-xl bg-card overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Contacts (active registrations)</h3></div>
+    <pre class="term m-4" id="contacts-text">Loading…</pre>
+  </div>
+  <div class="border border-border rounded-xl bg-card overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">AORs</h3></div>
+    <pre class="term m-4" id="aors-text">Loading…</pre>
+  </div>
+  <div class="border border-border rounded-xl bg-card overflow-hidden">
+    <div class="px-5 py-3.5 border-b border-border"><h3 class="text-sm font-semibold text-fg">Identifies (IP matching)</h3></div>
+    <pre class="term m-4" id="identifies-text">Loading…</pre>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Softphone credentials</h3>
+    <p class="text-xs text-muted-fg mt-0.5">Plug these into Linphone / Zoiper / MicroSIP — or use the built-in web phone</p>
+  </div>
+  <div class="p-5 grid md:grid-cols-3 gap-4">
+    {% for ext, label, transport in [
+      ('1001', 'SIP softphone', 'UDP 5060'),
+      ('1002', 'SIP softphone', 'UDP 5060'),
+      ('1010', 'WebRTC (browser)', 'WS 8088')
+    ] %}
+    <div class="border border-border rounded-lg p-4 bg-bg">
+      <div class="flex items-center justify-between mb-3">
+        <code class="text-base font-semibold">{{ ext }}</code>
+        <span class="text-[10px] px-2 py-0.5 bg-sky-bg text-sky-fg rounded-md border border-sky-fg/20 font-medium">{{ transport }}</span>
+      </div>
+      <div class="text-[11px] text-muted-fg mb-2">{{ label }}</div>
+      <dl class="text-xs space-y-1">
+        <div class="flex"><dt class="w-20 text-muted-fg">Server</dt><dd class="text-fg font-mono">i7-4790.taild13621.ts.net</dd></div>
+        <div class="flex"><dt class="w-20 text-muted-fg">Username</dt><dd><code>{{ ext }}</code></dd></div>
+        <div class="flex"><dt class="w-20 text-muted-fg">Password</dt><dd><code>{% if ext == '1010' %}WebRtc1010!{% else %}SipPass{{ ext }}!{% endif %}</code></dd></div>
+      </dl>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refresh(){
+  setUpdatedAt();
+  const d = await apiGet('/api/endpoints/full');
+  document.getElementById('endpoints-text').textContent = d.endpoints;
+  document.getElementById('contacts-text').textContent = d.contacts;
+  document.getElementById('aors-text').textContent = d.aors;
+  document.getElementById('identifies-text').textContent = d.identifies;
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+{% endblock %}

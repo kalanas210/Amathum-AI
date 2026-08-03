@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Trunk{% endblock %}
+{% block page_title %}Dialog SIP trunk{% endblock %}
+{% block page_subtitle %}Live SIP exchange with SBC 10.10.10.89 — heartbeats, calls, RTP{% endblock %}
+
+{% block content %}
+<div class="grid md:grid-cols-3 gap-3">
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="text-xs text-muted-fg font-medium">SBC heartbeat</div>
+        <div class="mt-3 text-xl font-semibold text-fg" id="trunk-alive">…</div>
+        <div class="text-[11px] text-muted-fg mt-0.5 font-mono" id="trunk-last">last OPTIONS …</div>
+      </div>
+      {% if 'admin' in role_perms %}
+      <button id="btn-recover" type="button"
+        class="text-[11px] font-medium px-2.5 py-1 rounded-md border border-border bg-card hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+        title="Re-run sip-trunk-route, restart sampath-ai, re-qualify Dialog, capture snapshot — no full reboot">
+        Recover trunk
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">Inbound msgs (recent)</div>
+    <div class="mt-3 text-xl font-semibold text-fg" id="trunk-in">…</div>
+    <div class="text-[11px] text-muted-fg mt-0.5">from SBC in last capture window</div>
+  </div>
+  <div class="border border-border rounded-xl bg-card p-4">
+    <div class="text-xs text-muted-fg font-medium">200 OK responses</div>
+    <div class="mt-3 text-xl font-semibold text-fg" id="trunk-ok">…</div>
+    <div class="text-[11px] text-muted-fg mt-0.5">healthy exchanges</div>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+    <div>
+      <h3 class="text-sm font-semibold text-fg">Live SIP messages</h3>
+      <p class="text-[11px] text-muted-fg mt-0.5">Last 60 lines · auto-refresh every 2s</p>
+    </div>
+    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-fg animate-pulse"></span><span class="text-[11px] text-muted-fg">Live</span></div>
+  </div>
+  <pre id="sip-text" class="term m-4 max-h-96 overflow-y-auto">Loading…</pre>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">RTP / media packets</h3>
+    <p class="text-[11px] text-muted-fg mt-0.5">Audio packets between us (192.168.1.43) and SBC (10.10.10.89)</p>
+  </div>
+  <pre id="rtp-text" class="term m-4 max-h-72 overflow-y-auto">Loading…</pre>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Trunk details</h3>
+  </div>
+  <dl class="p-5 text-sm grid md:grid-cols-2 gap-x-8 gap-y-2.5">
+    <div class="flex"><dt class="w-40 text-muted-fg">Public DID</dt><dd class="text-fg"><code>0114794050</code> · Colombo</dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Trunk identifier</dt><dd class="text-fg"><code>NAXTER3029</code> · <code>0977179461@dialogvpn.lk</code></dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Dialog SBC</dt><dd class="text-fg"><code>10.10.10.89:5060</code></dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Our edge IP</dt><dd class="text-fg"><code>192.168.1.43</code> (PABX alias)</dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Transport</dt><dd class="text-fg">UDP via L2TP/PPP through Huawei AR 192.168.1.254</dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Codecs offered</dt><dd class="text-fg">PCMA, PCMU, opus</dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Auth model</dt><dd class="text-fg">IP-based (no SIP digest auth from SBC)</dd></div>
+    <div class="flex"><dt class="w-40 text-muted-fg">Tenant ID</dt><dd class="text-fg"><code>NAXTER_AI_SOLUTIONS_PVT_LTD_DEVINUWARA</code></dd></div>
+  </dl>
+</div>
+
+{% if 'admin' in role_perms %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border flex items-center justify-between">
+    <div>
+      <h3 class="text-sm font-semibold text-fg">Recovery log</h3>
+      <p class="text-[11px] text-muted-fg mt-0.5">Per-step output of the most recent "Recover trunk" run, plus recent incident snapshots.</p>
+    </div>
+  </div>
+  <div class="p-4 space-y-3">
+    <pre id="recover-out" class="term max-h-72 overflow-y-auto text-[11px]">(no recovery run yet — click "Recover trunk")</pre>
+    <div>
+      <div class="text-xs text-muted-fg font-medium mb-1.5">Recent snapshots</div>
+      <ul id="snapshot-list" class="text-[11px] font-mono space-y-1">Loading…</ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refresh(){
+  setUpdatedAt();
+  const d = await apiGet('/api/trunk');
+  document.getElementById('trunk-alive').innerHTML = d.health.alive
+    ? `<span class="text-emerald-fg">Alive</span>` : `<span class="text-rose-fg">No heartbeat</span>`;
+  document.getElementById('trunk-last').textContent = 'last OPTIONS ' + (d.health.last_options || '—');
+  document.getElementById('trunk-in').textContent = d.health.in_count;
+  document.getElementById('trunk-ok').textContent = d.health.ok_count;
+  document.getElementById('sip-text').textContent = d.sip_tail.join('\n');
+  document.getElementById('rtp-text').textContent = d.rtp_tail.join('\n') || '(no media packets in capture window)';
+  lucide.createIcons();
+}
+refresh();
+setInterval(refresh, 2000);
+
+{% if 'admin' in role_perms %}
+async function loadSnapshots(){
+  try {
+    const list = await apiGet('/api/snapshots');
+    const ul = document.getElementById('snapshot-list');
+    if (!list || !list.length) { ul.textContent = '(none yet)'; return; }
+    ul.innerHTML = list.map(s => {
+      const links = s.files.map(f =>
+        `<a class="underline text-muted-fg hover:text-fg" href="/api/snapshots/${encodeURIComponent(s.name)}/${encodeURIComponent(f)}" target="_blank">${f}</a>`
+      ).join(' · ');
+      return `<li><span class="text-fg">${s.name}</span> <span class="text-muted-fg">(${s.mtime})</span><div class="ml-3 text-muted-fg">${links}</div></li>`;
+    }).join('');
+  } catch(e) { /* ignore */ }
+}
+
+async function runRecover(){
+  const btn = document.getElementById('btn-recover');
+  const out = document.getElementById('recover-out');
+  if (!confirm('Run soft recovery? This restarts sip-trunk-route + sampath-ai, re-qualifies the Dialog peer, and reloads Asterisk only if still dead. No full server reboot.')) return;
+  btn.disabled = true; btn.textContent = 'Recovering…';
+  out.textContent = 'Running…';
+  try {
+    const r = await fetch('/api/soft-recover', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const j = await r.json();
+    const lines = [`overall: ${j.ok ? 'RECOVERED' : 'STILL DEAD'}`, `final_health: ${JSON.stringify(j.final_health)}`, ''];
+    for (const s of (j.steps || [])) {
+      lines.push(`[${s.rc===0 ? ' ok ' : 'FAIL'}] ${s.step}`);
+      if (s.output) lines.push('  ' + s.output.split('\n').slice(0,8).join('\n  '));
+      if (s.snapshot_dir) lines.push('  snapshot: ' + s.snapshot_dir);
+      lines.push('');
+    }
+    out.textContent = lines.join('\n');
+    loadSnapshots();
+  } catch(e) {
+    out.textContent = 'recovery request failed: ' + e;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Recover trunk';
+  }
+}
+
+document.getElementById('btn-recover')?.addEventListener('click', runRecover);
+loadSnapshots();
+setInterval(loadSnapshots, 30000);
+{% endif %}
+</script>
+{% endblock %}

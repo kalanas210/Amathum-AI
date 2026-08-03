@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Naxter PBX Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>📞 Naxter PBX Monitor</h1>
+    <div class="meta">
+      <span>DID: <code>0114794050</code></span>
+      <span>SBC: <code>10.10.10.89</code></span>
+      <span>Server: <code>192.168.1.132 / 192.168.1.43</code></span>
+      <span id="now"></span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <section id="status-section">
+    <h2>System status</h2>
+    <div class="grid">
+      <div class="card" id="trunk-card">
+        <div class="label">Dialog trunk</div>
+        <div class="value" id="trunk-state">…</div>
+      </div>
+      <div class="card" id="asterisk-card">
+        <div class="label">Asterisk</div>
+        <div class="value" id="asterisk-state">…</div>
+      </div>
+      <div class="card" id="cf-card">
+        <div class="label">Cloudflare Tunnel</div>
+        <div class="value" id="cf-state">…</div>
+      </div>
+      <div class="card" id="route-card">
+        <div class="label">SIP route service</div>
+        <div class="value" id="route-state">…</div>
+      </div>
+      <div class="card" id="uptime-card">
+        <div class="label">Uptime</div>
+        <div class="value" id="uptime-state">…</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Endpoints</h2>
+    <table id="endpoint-table">
+      <thead><tr><th>Name</th><th>State</th><th>Channels</th></tr></thead>
+      <tbody><tr><td colspan="3">loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Controls</h2>
+    <div class="buttons">
+      <button onclick="api('/api/reload/dialplan','POST')">↻ Reload dialplan</button>
+      <button onclick="api('/api/reload/pjsip','POST')">↻ Reload PJSIP</button>
+      <button onclick="api('/api/hangup-all','POST')">⛔ Hang up all calls</button>
+      <button class="danger" onclick="if(confirm('Restart Asterisk? Active calls will drop.'))api('/api/restart-asterisk','POST')">⚡ Restart Asterisk</button>
+      <button onclick="refresh()">⟳ Refresh now</button>
+    </div>
+    <pre id="control-output" class="output"></pre>
+  </section>
+
+  <section>
+    <h2>Recent calls (last 50, newest first)</h2>
+    <table id="cdr-table">
+      <thead><tr><th>Time</th><th>From</th><th>To</th><th>Context</th><th>Duration</th><th>Status</th></tr></thead>
+      <tbody><tr><td colspan="6">loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Live SBC SIP exchange (last 40 lines)</h2>
+    <pre id="sip-tail" class="output">loading…</pre>
+  </section>
+
+  <section>
+    <h2>Active channels</h2>
+    <pre id="channels" class="output">loading…</pre>
+  </section>
+
+  <section>
+    <h2>Asterisk log (tail 150)</h2>
+    <pre id="log" class="output">loading…</pre>
+  </section>
+
+  <section>
+    <h2>Configs</h2>
+    <details>
+      <summary><code>extensions.conf</code></summary>
+      <pre class="output" id="ext-conf">click to load</pre>
+    </details>
+    <details>
+      <summary><code>pjsip.conf</code></summary>
+      <pre class="output" id="pjsip-conf">click to load</pre>
+    </details>
+  </section>
+
+</main>
+
+<footer><div class="container">Auto-refreshing every 5s · powered by Asterisk 22 + Flask</div></footer>
+
+<script>
+async function api(url, method='GET') {
+  try {
+    const r = await fetch(url, {method});
+    const j = await r.json();
+    if (j.output !== undefined) {
+      document.getElementById('control-output').textContent = `[${fmtTime(new Date())}] ${url}\n${j.output}`;
+    }
+    return j;
+  } catch(e) { return null; }
+}
+async function refresh() {
+  const s = await api('/api/status');
+  if (!s) return;
+  document.getElementById('now').textContent = s.time;
+  document.getElementById('uptime-state').textContent = s.uptime.replace(/System uptime:|Last reload:/g, '').split('\n')[0].trim() || s.uptime;
+  const set = (id, ok, txt) => {
+    const el = document.getElementById(id);
+    el.textContent = txt;
+    el.parentElement.classList.toggle('ok', !!ok);
+    el.parentElement.classList.toggle('bad', !ok);
+  };
+  set('trunk-state', s.sbc_alive, s.sbc_alive ? 'ALIVE' : 'NO HEARTBEAT');
+  set('asterisk-state', s.services.asterisk === 'active', s.services.asterisk);
+  set('cf-state', s.services.cloudflared === 'active', s.services.cloudflared);
+  set('route-state', s.services['sip-trunk-route'] === 'active', s.services['sip-trunk-route']);
+  const tb = document.querySelector('#endpoint-table tbody');
+  tb.innerHTML = s.endpoints.map(e => `<tr><td><code>${e.name}</code></td><td>${e.state}</td><td>${e.channels}</td></tr>`).join('') || '<tr><td colspan="3">(none)</td></tr>';
+
+  const cdr = await (await fetch('/api/cdr')).json();
+  const cb = document.querySelector('#cdr-table tbody');
+  cb.innerHTML = cdr.map(c => `<tr><td>${c.start}</td><td>${c.src}</td><td>${c.dst}</td><td>${c.context}</td><td>${c.duration}s</td><td>${c.disposition}</td></tr>`).join('') || '<tr><td colspan="6">no calls yet</td></tr>';
+
+  document.getElementById('sip-tail').textContent = (await (await fetch('/api/sip-tail')).json()).lines.join('\n');
+  document.getElementById('channels').textContent = (await (await fetch('/api/channels')).json()).text;
+  document.getElementById('log').textContent = (await (await fetch('/api/log')).json()).text;
+}
+document.querySelectorAll('details').forEach(d => {
+  d.addEventListener('toggle', async () => {
+    if (!d.open) return;
+    const sum = d.querySelector('summary code').textContent;
+    const target = d.querySelector('pre');
+    const r = await fetch(`/api/config/${sum.replace('.conf','')}`);
+    target.textContent = await r.text();
+  });
+});
+refresh();
+setInterval(refresh, 5000);
+</script>
+
+</body>
+</html>

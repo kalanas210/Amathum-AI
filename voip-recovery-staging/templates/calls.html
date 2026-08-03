@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Calls{% endblock %}
+{% block page_title %}Calls{% endblock %}
+{% block page_subtitle %}Active calls and call detail records (CDR){% endblock %}
+
+{% block page_actions %}
+{% if 'call' in role_perms %}
+<button onclick="if(confirm('Hang up ALL active channels?\n\nThis drops every call in progress on the PBX, including live AI agent calls with real customers.')) apiPost('/api/hangup-all').then(j=>{toast('Hangup signal sent'); refresh();})" class="text-sm px-3 py-1.5 border border-rose-fg/30 bg-rose-bg text-rose-fg rounded-md hover:bg-rose-bg/80 flex items-center gap-1.5 transition-colors">
+  <i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Hang up all
+</button>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border">
+    <h3 class="text-sm font-semibold text-fg">Active channels</h3>
+    <p class="text-xs text-muted-fg mt-0.5" id="ch-summary">Loading…</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="text-[11px] uppercase tracking-wide text-muted-fg bg-bg/40">
+        <tr><th class="text-left px-5 py-2">Channel</th><th class="text-left px-5 py-2">From</th>
+            <th class="text-left px-5 py-2">Where</th><th class="text-left px-5 py-2">State</th>
+            <th class="text-left px-5 py-2">Doing</th><th class="text-right px-5 py-2">Duration</th></tr>
+      </thead>
+      <tbody id="ch-rows"><tr><td colspan="6" class="px-5 py-6 text-center text-muted-fg">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3.5 border-b border-border flex flex-wrap items-center justify-between gap-3">
+    <h3 class="text-sm font-semibold text-fg">Call detail records</h3>
+    <div class="flex items-center gap-2">
+      <div class="relative">
+        <i data-lucide="search" class="w-3.5 h-3.5 text-muted-fg absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        <input id="filter" placeholder="Filter by number..." class="text-xs border border-border rounded-md pl-7 pr-2.5 py-1.5 w-48">
+      </div>
+      <select id="filter-status" class="text-xs border border-border rounded-md px-2 py-1.5">
+        <option value="">All statuses</option>
+        <option>ANSWERED</option><option>NO ANSWER</option><option>BUSY</option><option>FAILED</option>
+      </select>
+    </div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted/50">
+        <tr class="text-[11px] text-muted-fg uppercase tracking-wider">
+          <th class="text-left px-5 py-2.5 font-medium">Start</th>
+          <th class="text-left px-5 py-2.5 font-medium">From</th>
+          <th class="text-left px-5 py-2.5 font-medium">To</th>
+          <th class="text-left px-5 py-2.5 font-medium">Context</th>
+          <th class="text-left px-5 py-2.5 font-medium">Channel</th>
+          <th class="text-left px-5 py-2.5 font-medium">Dur.</th>
+          <th class="text-left px-5 py-2.5 font-medium">Bill</th>
+          <th class="text-left px-5 py-2.5 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody id="cdr-tbody" class="text-fg"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rawCdr = [];
+function render(){
+  const q = document.getElementById('filter').value.toLowerCase();
+  const s = document.getElementById('filter-status').value;
+  const list = rawCdr.filter(r => (!q || r.src.toLowerCase().includes(q) || r.dst.toLowerCase().includes(q))
+                              && (!s || r.disposition===s));
+  document.getElementById('cdr-tbody').innerHTML = list.length
+    ? list.map(c=>`<tr class="border-t border-border">
+        <td class="px-5 py-2.5 text-xs text-muted-fg font-mono whitespace-nowrap">${c.start}</td>
+        <td class="px-5 py-2.5"><code>${esc(c.src)}</code></td>
+        <td class="px-5 py-2.5"><code>${esc(c.dst)}</code></td>
+        <td class="px-5 py-2.5 text-xs text-fg">${esc(c.dcontext)}</td>
+        <td class="px-5 py-2.5 text-[11px] text-muted-fg truncate max-w-[200px] font-mono">${esc(c.channel)}</td>
+        <td class="px-5 py-2.5 text-xs text-fg">${c.duration}s</td>
+        <td class="px-5 py-2.5 text-xs text-fg">${c.billsec}s</td>
+        <td class="px-5 py-2.5">${dispBadge(c.disposition)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="8" class="px-5 py-8 text-center text-muted-fg text-sm">No calls match filter</td></tr>';
+}
+async function refresh(){
+  setUpdatedAt();
+  const cdr = await apiGet('/api/cdr?limit=300');
+  rawCdr = cdr; render();
+  const ch = await apiGet('/api/channels');
+  renderChannels(ch.text);
+  document.getElementById('ch-summary').textContent = (ch.text.match(/\d+ active channels.*\d+ active calls.*\d+ calls processed/s) || ['—'])[0].replace(/\n/g,' · ');
+  lucide.createIcons();
+}
+function renderChannels(text) {
+  const rows = parseChannels(text);
+  const tb = document.getElementById('ch-rows');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="px-5 py-8 text-center text-muted-fg">No calls in progress right now.</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(r => {
+    const up = /^Up$/i.test(r.state);
+    const badge = up ? 'badge-emerald' : 'badge-amber';
+    return `<tr class="border-t border-border">
+      <td class="px-5 py-2 font-mono text-[11px] text-fg">${esc(r.channel)}</td>
+      <td class="px-5 py-2 font-mono text-[11px]">${esc(r.callerid || '—')}</td>
+      <td class="px-5 py-2 text-muted-fg text-xs">${esc(r.context)}${r.exten && r.exten !== 's' ? ' / ' + esc(r.exten) : ''}</td>
+      <td class="px-5 py-2"><span class="px-2 py-0.5 rounded-md text-[11px] border font-medium ${badge}">${esc(r.state)}</span></td>
+      <td class="px-5 py-2 text-muted-fg text-xs">${esc(r.app)}${r.data ? ' ' + esc(r.data) : ''}</td>
+      <td class="px-5 py-2 text-right font-mono text-[11px] text-muted-fg">${esc(r.duration || '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+['filter','filter-status'].forEach(id=>document.getElementById(id).addEventListener('input', render));
+refresh();
+setInterval(refresh, 3000);
+</script>
+{% endblock %}

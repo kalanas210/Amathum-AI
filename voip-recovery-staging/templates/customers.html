@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block page_title %}Calls &amp; captured info{% endblock %}
+{% block page_subtitle %}One row per call. Click a call to see all captured fields, the full transcript, and the recording (if available). Updates every 2s.{% endblock %}
+
+{% block content %}
+<div class="border border-border rounded-xl bg-card overflow-hidden">
+  <div class="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-2 flex-1 min-w-[16rem]">
+      <i data-lucide="search" class="w-4 h-4 text-muted-fg"></i>
+      <input id="q" type="search" placeholder="Search caller, captured field value, session id…"
+             class="w-full px-2 py-1.5 rounded-md border border-border bg-card text-fg text-sm">
+    </div>
+    <div class="flex items-center gap-2">
+      <select id="flow-filter" class="px-2 py-1.5 rounded-md border border-border bg-card text-fg text-[12px]">
+        <option value="">All flows</option>
+      </select>
+      <label class="text-[11px] text-muted-fg flex items-center gap-1 cursor-pointer">
+        <input id="live-only" type="checkbox" class="rounded">
+        Live only
+      </label>
+      <button id="btn-pause" class="text-[11px] px-2.5 py-1 rounded-md border border-border hover:bg-muted">
+        <i data-lucide="pause" class="w-3 h-3 inline-block -mt-0.5"></i>
+        <span id="pause-label">Pause</span>
+      </button>
+      <a href="/api/customers/export.csv" class="text-[11px] px-2.5 py-1 rounded-md border border-border hover:bg-muted no-underline">
+        <i data-lucide="download" class="w-3 h-3 inline-block -mt-0.5"></i> CSV
+      </a>
+    </div>
+  </div>
+
+  <div id="sessions" class="divide-y divide-border max-h-[calc(100vh-14rem)] overflow-y-auto">
+    <div class="py-8 text-center text-muted-fg text-[12px]">Loading…</div>
+  </div>
+
+  <div class="px-5 py-2 border-t border-border text-[11px] text-muted-fg flex items-center justify-between">
+    <div><span id="count">0</span> calls · last refreshed <span id="updated" class="font-mono">—</span></div>
+    <div>Polling every 2s · server time <span id="server-time" class="font-mono">—</span></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='customers.js') }}"></script>
+{% endblock %}
