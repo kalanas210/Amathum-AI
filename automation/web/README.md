@@ -1,6 +1,6 @@
-# Naxter Automations — Next.js app (`web/`)
+# Ryzera Automations — Next.js app (`web/`)
 
-An **n8n-style workflow builder** for the Naxter / Ryzera admin, rewritten from the
+An **n8n-style workflow builder** for the Ryzera / Amathum AI admin, rewritten from the
 original Flask + vanilla-JS prototype into a single **Next.js (App Router)** app with a
 **TypeScript** engine, **Next.js Route Handlers** for the API, and a **ShadCN + React
 Flow** UI.

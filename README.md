@@ -90,7 +90,7 @@ flowchart TB
     end
 
     Bridge --> Store
-    Monitor["app.py — Naxter PBX Monitor<br/>Flask admin · 96 routes"] <--> Store
+    Monitor["app.py — Ryzera PBX Monitor<br/>Flask admin · 96 routes"] <--> Store
 
     Shop["shop.py — Ryzera Store<br/>public storefront"] --> Store
     Shop -.->|"new order"| Monitor
@@ -162,7 +162,7 @@ flowchart TB
 
 | Layer | Technology |
 |---|---|
-| Process management | **systemd** — `sampath-ai`, `pbx-monitor`, `pbx-monitor-ryzera`, `naxter-shop`, `naxter-automations`, `voip-probe.timer` |
+| Process management | **systemd** — `sampath-ai`, `pbx-monitor`, `pbx-monitor-ryzera`, `ryzera-shop`, `ryzera-automations`, `voip-probe.timer` |
 | Networking | **Cloudflare Tunnel** for public hostnames · **Tailscale** for private service binding |
 | Deployment | Idempotent bash installers (`install-*.sh`) that back up before overwriting |
 | Observability | `journalctl`, SIP `tcpdump` rolling capture, 10-second trunk probe timer, JSONL session logs, SSE live streams |
@@ -194,7 +194,7 @@ ryzera/
 │   │   └── memory.ts               per-caller memory store
 │   ├── package.json · tsconfig.json   bridge dependencies
 │   ├── agent-config.example.json   example persona config (copy & edit)
-│   ├── app.py                      Naxter PBX Monitor — Flask admin, 96 routes
+│   ├── app.py                      Ryzera PBX Monitor — Flask admin, 96 routes
 │   ├── templates/ · static/        the admin UI (26 pages + assets)
 │   ├── seeds/                      starter flow personas
 │   ├── asterisk/ai-outbound.conf   dialplan context for outbound AI calls
@@ -388,10 +388,10 @@ sudo bash voip-recovery-staging/install-shop.sh     # port 5055
 | 5038 | Asterisk AMI |
 | 8088 | Asterisk WebSocket (WebRTC softphone) |
 | 9090 / 9091 / 9092 | AudioSocket — inbound / retry / outbound |
-| 5051 | Naxter PBX Monitor (admin) |
+| 5051 | Ryzera PBX Monitor (admin) |
 | 5052 | Ryzera-branded monitor clone |
 | 5055 | Ryzera Store (storefront) |
-| 5056 | Naxter Automations (production) |
+| 5056 | Ryzera Automations (production) |
 | 5099 | Python automation engine (dev) |
 | 3000 | Automation builder (dev) |
 | 3001 / 3002 | Browser voice agent — Next.js / WebSocket |
@@ -430,7 +430,7 @@ Real telephony is unforgiving, and several bugs here were found and fixed agains
 - **Transfer sequencing** — `waitForAgentToFinish()` blocks the AMI `Redirect` until the
   agent has actually finished saying *"please hold, I'm transferring you"*.
 
-### 6.3 Admin panel (Naxter PBX Monitor — 96 routes)
+### 6.3 Admin panel (Ryzera PBX Monitor — 96 routes)
 
 - Live dashboard: active channels, CDR, call charts, status breakdown.
 - **Call-flow / persona editor** — visual editor for each agent: system prompt, voice,
@@ -722,8 +722,8 @@ Tunnel**, and internal-only services bind a **Tailscale** address instead of `0.
 | `sampath-ai` | `bridge.ts` (tsx) | 9090–9092 |
 | `pbx-monitor` | `app.py` admin | 5051 |
 | `pbx-monitor-ryzera` | rebranded admin clone | 5052 |
-| `naxter-shop` | `shop.py` storefront | 5055 |
-| `naxter-automations` | Next.js production server | 5056 |
+| `ryzera-shop` | `shop.py` storefront | 5055 |
+| `ryzera-automations` | Next.js production server | 5056 |
 | `voip-probe.timer` | 10 s SIP trunk probe | — |
 
 The installers (`install.sh`, `install-shop.sh`, `install-dashboards.sh`,
@@ -733,9 +733,9 @@ be re-run safely. `uninstall.sh` restores the most recent backups and removes th
 
 ```bash
 cd automation/web && npm ci && npm run build
-sudo cp deploy/naxter-automations.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now naxter-automations
-journalctl -u naxter-automations -f
+sudo cp deploy/ryzera-automations.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now ryzera-automations
+journalctl -u ryzera-automations -f
 ```
 
 ---
@@ -786,4 +786,4 @@ durable (cross-restart) waits and scheduled triggers.
 ## Credits
 
 Built for Sri Lankan businesses — trilingual by default, on a local carrier, with LKR
-pricing. Branded per client (Naxter · Ryzera · Sampath AI) from a single engine.
+pricing. Branded per client (Ryzera · Amathum AI · Sampath AI) from a single engine.

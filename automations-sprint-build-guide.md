@@ -1,4 +1,4 @@
-# Sprint & Build Guide — Naxter Automation Workflow Builder ("n8n inside our app")
+# Sprint & Build Guide — Ryzera Automation Workflow Builder ("n8n inside our app")
 
 **Feature codename:** `automations`
 **Audience:** the developer who will build this (junior‑friendly — every step is explained)
@@ -992,15 +992,15 @@ This is what lets a workflow read/write the team's Google Sheets. Because we are
 > Do this **once**, signed in with a **Google Workspace admin** account for your company (so "Internal" is available).
 
 1. Go to **https://console.cloud.google.com** and sign in with the **company Workspace** account.
-2. Top bar → **project dropdown** → **New Project**. Name it `naxter-automations`. Make sure **Organization** = your company (not "No organization"). Click **Create**, then select it.
+2. Top bar → **project dropdown** → **New Project**. Name it `ryzera-automations`. Make sure **Organization** = your company (not "No organization"). Click **Create**, then select it.
 3. Left menu → **APIs & Services → Library**. Search **"Google Sheets API"** → **Enable**. (If you'll also let users *pick/list* spreadsheets, also enable **"Google Drive API"**.)
 4. Left menu → **APIs & Services → OAuth consent screen** (newer console calls this **"Google Auth platform → Branding / Audience"**).
    - **User type / Audience:** choose **Internal**. ← the most important click. (Internal = only your company's Google accounts can connect; **no Google verification review**, no "unverified app" warning, no 7‑day token expiry.)
-   - Fill **App name** (e.g. "Naxter Automations"), **User support email**, **Developer contact email**. Save.
+   - Fill **App name** (e.g. "Ryzera Automations"), **User support email**, **Developer contact email**. Save.
 5. **Scopes:** add `https://www.googleapis.com/auth/spreadsheets` (read **and** write Sheets). Add `https://www.googleapis.com/auth/drive.file` **only if** you let users create/pick files. Save. *(For Internal apps, scopes aren't shown on the consent screen and don't trigger review.)*
 6. Left menu → **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
    - **Application type:** **Web application**.
-   - **Name:** `naxter-automations-web`.
+   - **Name:** `ryzera-automations-web`.
    - **Authorized redirect URIs → Add URI:** paste the **exact** callback URL your app uses, e.g. `https://monitor.easmoney.me/oauth/google/callback` (and `http://localhost:5051/oauth/google/callback` for local testing). It must match **character‑for‑character** what the app sends.
 7. Click **Create**. A popup shows your **Client ID** and **Client Secret**. **Copy both.**
 8. Put them in our config (see §11). **Never** commit them to git or send them to the browser.

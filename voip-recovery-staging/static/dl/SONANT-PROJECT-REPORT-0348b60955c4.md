@@ -1,7 +1,7 @@
 # Sonant — AI Voice Agent + PBX Platform
 ## Full Project Report
 
-> **Brand (go-to-market):** Sonant · **Voice persona:** Nawani · **Internal infra id:** naxter / sampath-ai
+> **Brand (go-to-market):** Sonant · **Voice persona:** Nawani · **Internal infra id:** ryzera / sampath-ai
 > **Tagline:** *"Give your business a voice."* · **Market:** global
 > **Report date:** 2026-06-18 · **Flagship live deployment:** Holton Hospital (Sinhala/Tamil/English)
 
@@ -31,7 +31,7 @@ Four things share one backend and one telephony stack:
 |---|---|---|---|
 | **Voice Agent** ("Nawani") | Real-time inbound + outbound phone agent; books appointments/orders/reservations, orders lab tests, confirms & notifies | Phone calls via the SIP trunk | `sampath-ai.service` |
 | **PBX Monitor + Dashboards** | PBX ops/recovery console **plus** per-vertical business dashboards (hospital, reservations, sales) | `monitor.easmoney.me` | `pbx-monitor.service` (Flask, :5051) |
-| **Storefront** | Public e-commerce store for the Sales vertical; web orders auto-trigger phone confirmation calls | `shop.easmoney.me` | `naxter-shop.service` (Flask, :5055) |
+| **Storefront** | Public e-commerce store for the Sales vertical; web orders auto-trigger phone confirmation calls | `shop.easmoney.me` | `ryzera-shop.service` (Flask, :5055) |
 | **Marketing site** | Sonant brand landing page (separate Next.js codebase) | Vercel → `sonant.ai` | — |
 
 The flagship live deployment is **Holton Hospital** (renamed from "Durdans" on 2026-06-09; the internal flow id intentionally stays `durdans`). Nawani takes live Sinhala calls, finds a doctor across 39 branches, books the appointment with a real channelling **queue number** and fee, and the record appears on the hospital dashboard within ~4 seconds.
@@ -71,7 +71,7 @@ The flagship live deployment is **Holton Hospital** (renamed from "Durdans" on 2
         ▼
 ┌──────────────────────────┐        ┌──────────────────────┐
 │ PBX Monitor + Dashboards │        │ Storefront (Flask)   │
-│ (Flask, :5051)           │        │ naxter-shop :5055    │
+│ (Flask, :5051)           │        │ ryzera-shop :5055    │
 │ • PBX ops + soft-recover │        │ shop.easmoney.me     │
 │ • hospital / reservation │        └──────────────────────┘
 │   / sales dashboards     │                  │ writes web orders
@@ -90,7 +90,7 @@ The flagship live deployment is **Holton Hospital** (renamed from "Durdans" on 2
 
 ### Outbound call flow (confirmation / notification)
 1. Trigger: a dashboard row action **or** the auto-confirm watcher in `app.py`.
-2. Flask writes an outbound context file `/var/lib/sampath-ai/outbound/<uuid>.json` and **AMI-originates** `PJSIP/<phone>@pabx` into `[ai-outbound]` (caller-ID `Naxter <0114794050>`).
+2. Flask writes an outbound context file `/var/lib/sampath-ai/outbound/<uuid>.json` and **AMI-originates** `PJSIP/<phone>@pabx` into `[ai-outbound]` (caller-ID `Ryzera <0114794050>`).
 3. On answer, `[ai-outbound]` → `AudioSocket(:9092)`; the bridge builds a confirm/notify persona from the context and runs the call, writing the outcome back onto the record.
 
 ---
@@ -114,7 +114,7 @@ The flagship live deployment is **Holton Hospital** (renamed from "Durdans" on 2
 - **TTS for broadcast:** **AWS Polly** (boto3), neural voice (default "Matthew"), cached by SHA-256
 - **Storage:** flat **JSON files** on disk — *no database*
 
-**Storefront (`naxter-shop.service`)**
+**Storefront (`ryzera-shop.service`)**
 - **Framework:** single-file Flask (`shop/shop.py`, ~176 lines) + `store.html`, bind `127.0.0.1:5055`
 - Server-side hardened checkout (price recompute, stock lock, rate limit, HTML-escape, payload cap)
 - Frontend: Tailwind via CDN, vanilla JS, localStorage cart
@@ -275,7 +275,7 @@ There are **three** outbound mechanisms today, all built on one primitive (`_ori
 
 ---
 
-## 11. Storefront (Naxter Store)
+## 11. Storefront (Ryzera Store)
 
 A public, unauthenticated Flask shop (`shop/shop.py`) at `shop.easmoney.me`, sharing the **same** product catalogue and order store as the agent and dashboard. A web checkout appears on the staff dashboard in ~4 s and immediately enters the auto-confirm-call queue.
 
@@ -341,7 +341,7 @@ The universal, reusable patterns across all verticals: (1) **tool-grounded anti-
 |---|---|---|
 | `install-agents.sh` | `bridge.ts`, `gemini-live.ts`, all refdata, booking dirs; runs `setup-flows.py` | `sampath-ai` |
 | `install-dashboards.sh` | `app.py`, engine, all data files, `industry.html` | `pbx-monitor` |
-| `install-shop.sh` | `shop/` storefront (+ systemd unit) | `naxter-shop` |
+| `install-shop.sh` | `shop/` storefront (+ systemd unit) | `ryzera-shop` |
 | `install-outbound.sh` | `[ai-outbound]` dialplan + `dialplan reload` | Asterisk |
 | `install-callerid.sh` | in-place caller-ID capture patch | Asterisk |
 | `install-flows.sh` / `-v2.sh` | multi-agent flow builder, escalation patch, customers/playground/working-hours UI | `pbx-monitor` + `sampath-ai` |
@@ -405,7 +405,7 @@ The universal, reusable patterns across all verticals: (1) **tool-grounded anti-
 
 ## 18. Brand & go-to-market
 
-**Sonant** is the global consumer brand (formerly naxter/ryzera); the AI persona is **Nawani**. The Next.js landing page (→ Vercel `sonant.ai`) pitches it **horizontally**: *"Give your business a voice that never sleeps … answers every inbound call, places outbound calls at scale, and books appointments, reservations and orders — in 40+ languages, around the clock. Billed by the minute."*
+**Sonant** is the global consumer brand; the AI persona is **Nawani**. The Next.js landing page (→ Vercel `sonant.ai`) pitches it **horizontally**: *"Give your business a voice that never sleeps … answers every inbound call, places outbound calls at scale, and books appointments, reservations and orders — in 40+ languages, around the clock. Billed by the minute."*
 
 - **Six headline features:** Inbound answering · Outbound at scale · **Actions** (writes real bookings into your system, not just a transcript) · human-sounding multilingual voice · every call on the record (transcripts/summaries/analytics) · integrations (SIP/PSTN, calendars, CRMs, webhooks, warm transfer).
 - **Six target industries:** Healthcare · Restaurants & hospitality · Retail & e-commerce · Real estate · Logistics · Finance & services — overlapping the backend's hospital/reservations/sales/finance verticals.

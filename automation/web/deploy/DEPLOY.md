@@ -1,4 +1,4 @@
-# Deploying Naxter Automations on port 5056
+# Deploying Ryzera Automations on port 5056
 
 The app is a Next.js production server. It binds the port directly (no nginx
 needed). Port 5056 is > 1024, so it does **not** require root to run — only the
@@ -18,23 +18,23 @@ npm run build
 # stop any interim copy first (frees port 5056)
 fuser -k 5056/tcp 2>/dev/null || true
 
-sudo cp /home/horapusa/ryzera/automation/web/deploy/naxter-automations.service \
-        /etc/systemd/system/naxter-automations.service
+sudo cp /home/horapusa/ryzera/automation/web/deploy/ryzera-automations.service \
+        /etc/systemd/system/ryzera-automations.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now naxter-automations.service
+sudo systemctl enable --now ryzera-automations.service
 
 # verify
-systemctl status naxter-automations.service --no-pager
+systemctl status ryzera-automations.service --no-pager
 curl -s -o /dev/null -w "%{http_code}\n" http://100.68.210.114:5056/automations   # -> 200
 ```
 
-Logs: `journalctl -u naxter-automations -f`
+Logs: `journalctl -u ryzera-automations -f`
 
 ## 3. Updating later
 
 ```bash
 cd /home/horapusa/ryzera/automation/web && git pull && npm ci && npm run build
-sudo systemctl restart naxter-automations.service
+sudo systemctl restart ryzera-automations.service
 ```
 
 ## Notes
